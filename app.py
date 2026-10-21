@@ -66,7 +66,8 @@ alertes = [name for name, info in meds.items() if int(info.get("stock", 0)) <= 5
 if alertes:
     for med_alerte in alertes:
         st.error(f"⚠️ **ALERTE STOCK FAIBLE** : Il reste seulement {meds[med_alerte]['stock']} comprimé(s) pour **{med_alerte}** !")
-# --- MENU DE GAUCHE : CONFIGURATION ET PARCOURS ---
+
+# --- MENU DE GAUCHE ---
 st.sidebar.header("⚙️ Configuration Globale")
 parcours_mode = st.sidebar.selectbox("🌸 Ton parcours actuel :", ["Suivi de Cycle & Essai Bébé", "Suivi de Grossesse Évolutif", "Parcours PMA (Procréation Médicalement Assistée)"], key="side_parcours_mode")
 
@@ -75,20 +76,32 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=F
     current_med_name = ""
     default_stock = 30
     default_timing = "Début de repas"
-    default_m = False
-    default_mi = False
-    default_s = False
+    default_m, default_mi, default_s = False, False, False
+    default_is_evo = False
     default_nb_cachet = 1
+    default_dur1 = 7
+    default_d2 = 2
     
     if med_mode == "Modifier un existant" and meds:
         current_med_name = st.sidebar.selectbox("Choisir le médicament à modifier", list(meds.keys()), key="side_select_med")
-        default_stock = int(meds[current_med_name].get("stock", 30))
-        default_timing = meds[current_med_name].get("timing", "Début de repas")
-        default_m = meds[current_med_name].get("prend_matin", False)
-        default_mi = meds[current_med_name].get("prend_midi", False)
-        default_s = meds[current_med_name].get("prend_soir", False)
-        default_nb_cachet = meds[current_med_name].get("nb_cachet_par_repas", 1)
-    
+        info_m = meds[current_med_name]
+        default_stock = int(info_m.get("stock", 30))
+        default_timing = info_m.get("timing", "Début de repas")
+        default_m = info_m.get("prend_matin", False)
+        default_mi = info_m.get("prend_midi", False)
+        default_s = info_m.get("prend_soir", False)
+        default_is_evo = info_m.get("is_evolution", False)
+        
+        phases_list = info_m.get("phases", [])
+        if isinstance(phases_list, list) and len(phases_list) > 0:
+            default_nb_cachet = int(phases_list[0].get("dose", 1))
+            default_dur1 = int(phases_list[0].get("duration", 7))
+            if len(phases_list) > 1:
+                default_d2 = int(phases_list[1].get("dose", 2))
+        elif isinstance(phases_list, dict):
+            default_nb_cachet = int(phases_list.get("dose", 1))
+            default_dur1 = int(phases_list.get("duration", 7))
+
     med_name = st.sidebar.text_input("Nom du médicament", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name").strip()
     
     stock_actuel = default_stock
@@ -106,17 +119,30 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=F
     p_matin = st.sidebar.checkbox("🌅 Matin", value=default_m, key="side_p_matin")
     p_midi = st.sidebar.checkbox("☀️ Midi", value=default_mi, key="side_p_midi")
     p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir")
-    nb_cachets_repas = st.sidebar.number_input("Nombre de cachet(s) par repas :", min_value=1, value=default_nb_cachet, key="side_nb_cachets_repas")
+    
+    st.sidebar.markdown("---")
+    is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers de dose)", value=default_is_evo, key="side_is_evo_cb")
+    
+    if is_evolution:
+        st.sidebar.caption("⚙️ Configure ton protocole Metformine :")
+        d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val")
+        dur1 = st.sidebar.number_input("Durée Palier 1 (en jours)", min_value=1, value=default_dur1, key="side_dur1_val")
+        d2 = st.sidebar.number_input("Dose Palier 2 (cachets final)", min_value=1, value=default_d2, key="side_d2_val")
+        phases_save = {"dose": int(d1), "duration": int(dur1), "dose_finale": int(d2)}
+        nb_cachets_repas = int(d1)
+    else:
+        nb_cachets_repas = st.sidebar.number_input("Nombre de cachet(s) par repas :", min_value=1, value=default_nb_cachet, key="side_nb_cachets_repas")
+        phases_save = {"dose": int(nb_cachets_repas), "duration": 9999}
 
     if st.sidebar.button("💾 Enregistrer le médicament", key="side_save_med_btn"):
         if med_name:
             if current_med_name in meds: del meds[current_med_name]
             meds[med_name] = {
-                "stock": int(stock_actuel), "timing": timing, "start_date": str(date.today()), "is_evolution": False, "phases": [{"dose": nb_cachets_repas, "duration": 9999}],
+                "stock": int(stock_actuel), "timing": timing, "start_date": str(date.today()), "is_evolution": is_evolution, "phases": phases_save,
                 "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
             save_json(meds, MEDS_FILE)
-            st.sidebar.success("🎉 C'est bien enregistré !")
+            st.sidebar.success("🎉 Médicament enregistré !")
             redemarrer()
 
 if meds:
@@ -132,18 +158,39 @@ if meds:
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections"])
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
+
     st.subheader("📅 Prises du jour & Vos Symptômes")
     st.caption(f"Mode actif : **{parcours_mode}**")
+    
     if not meds:
         st.info("Ajoute un médicament dans le menu à gauche pour commencer.")
     else:
         prises_details = {}
         for name, info in meds.items():
             st.write(f"#### 💊 {name}")
-            st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{info.get('nb_cachet_par_repas', 1)} cachet(s)** ({info.get('timing')})")
+            
+            # --- MOTEUR DE PALIERS DE DOSES DE METFORMINE REPARE ---
+            dose_actuelle = int(info.get("nb_cachet_par_repas", 1))
+            if info.get("is_evolution", False) and "phases" in info:
+                try:
+                    p_list = info["phases"]
+                    p1 = p_list[0] if isinstance(p_list, list) else p_list
+                    date_debut = datetime.strptime(info.get("start_date", str(date.today())), "%Y-%m-%d").date()
+                    jours_ecoules = (date.today() - date_debut).days
+                    if jours_ecoules < int(p1.get("duration", 7)):
+                        dose_actuelle = int(p1.get("dose", 1))
+                        jours_restants = int(p1.get("duration", 7)) - jours_ecoules
+                        st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation automatique au Palier 2 dans **{jours_restants} jour(s)** (le {(date.today() + timedelta(days=jours_restants)).strftime('%d/%m/%Y')}).")
+                    else:
+                        if isinstance(p_list, list) and len(p_list) > 1:
+                            dose_actuelle = int(p_list[1].get("dose", 2))
+                        st.success(f"🚀 **Palier 2 Maximal atteint !** Passer à la dose finale de **{dose_actuelle} cachet(s)** par repas.")
+                except:
+                    pass
+            
+            st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
             col_m, col_mid, col_s = st.columns(3)
             matin_check, midi_check, soir_check = False, False, False
-            stock_key_id = int(info.get("stock", 0))
             with col_m:
                 if info.get("prend_matin", True): matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_unique_key_securisee")
             with col_mid:
@@ -151,7 +198,7 @@ with tab1:
             with col_s:
                 if info.get("prend_soir", True): soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soir_unique_key_securisee")
                     
-            prises_details[name] = {"Matin": matin_check, "Midi": midi_check, "Soir": soir_check, "dose_unitaire": info.get("nb_cachet_par_repas", 1)}
+            prises_details[name] = {"Matin": matin_check, "Midi": midi_check, "Soir": soir_check, "dose_unitaire": dose_actuelle}
             st.write("---")
             
         st.write("### 🧪 1. Effets Secondaires fréquents")
@@ -192,6 +239,8 @@ with tab1:
             save_df(history_df, HISTORY_FILE)
             st.success("🎉 C'est bien enregistré dans ton historique !")
             redemarrer()
+
+
 # --- TAB 2 : MON SUIVI FÉMININ ---
 with tab2:
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
