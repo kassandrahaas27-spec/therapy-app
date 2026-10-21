@@ -130,65 +130,7 @@ if meds:
 
 # --- DISTRIBUTION COMMUNE DES ONGLETS ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections"])
-# --- TAB 1 : TABLEAU DE BORD ---
-with tab1:
-    st.subheader("📅 Prises du jour & Vos Symptômes")
-    st.caption(f"Mode actif : **{parcours_mode}**")
-    if not meds:
-        st.info("Ajoute un médicament dans le menu à gauche pour commencer.")
-    else:
-        prises_details = {}
-        for name, info in meds.items():
-            st.write(f"#### 💊 {name}")
-            st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{info.get('nb_cachet_par_repas', 1)} cachet(s)** ({info.get('timing')})")
-            col_m, col_mid, col_s = st.columns(3)
-            matin_check, midi_check, soir_check = False, False, False
-            stock_key_id = int(info.get("stock", 0))
-            with col_m:
-                if info.get("prend_matin", True): matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_mat_{stock_key_id}")
-            with col_mid:
-                if info.get("prend_midi", False): midi_check = st.checkbox("☀️ Pris le Midi", key=f"t1_{name}_mid_{stock_key_id}")
-            with col_s:
-                if info.get("prend_soir", True): soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soi_{stock_key_id}")
-            prises_details[name] = {"Matin": matin_check, "Midi": midi_check, "Soir": soir_check, "dose_unitaire": info.get("nb_cachet_par_repas", 1)}
-            st.write("---")
-            
-        st.write("### 🧪 1. Effets Secondaires fréquents")
-        symp_med_choisis = []
-        liste_symp_med = ["Nausées / Vomissements", "Diarrhées", "Maux d'estomac / Brûlures", "Perte d'appétit", "Vertiges", "Bouffées de chaleur"]
-        c_m1, c_m2 = st.columns(2)
-        for idx, s in enumerate(liste_symp_med):
-            with c_m1 if idx % 2 == 0 else c_m2:
-                if st.checkbox(s, key=f"t1_med_{s}"): symp_med_choisis.append(s)
-        st.write("### 🌸 2. Symptômes liés au Cycle, SOPK & Glycémie")
-        symp_cycle_choisis = []
-        liste_symp_cycle = ["Coup de barre (Après repas)", "Envie de sucre subite", "Maux de tête / Migraine", "Crampes pelviennes / Ovaires", "Poussée d'acné", "Sauts d'humeur / Irritabilité", "Seins douloureux", "Rétention d'eau"]
-        c_c1, c_c2 = st.columns(2)
-        for idx, s in enumerate(liste_symp_cycle):
-            with c_c1 if idx % 2 == 0 else c_c2:
-                if st.checkbox(s, key=f"t1_cyc_{s}"): symp_cycle_choisis.append(s)
-        note_jour = st.text_input("Notes libres sur ta journée", placeholder="RAS", key="t1_note_libre")
-        
-        if st.button("✅ Enregistrer ma journée", key="t1_submit_direct_repare"):
-            new_entries = []
-            for name, moments in prises_details.items():
-                moments_cochés = [k for k, v in moments.items() if k in ["Matin", "Midi", "Soir"] and v]
-                if len(moments_cochés) > 0:
-                    total_de_cachets_pris = len(moments_cochés) * moments["dose_unitaire"]
-                    meds[name]["stock"] = max(0, meds[name]["stock"] - total_de_cachets_pris)
-                    txt_prise = ", ".join(moments_cochés) + f" ({total_de_cachets_pris} cachet(s) au total)"
-                else:
-                    txt_prise = "Aucune"
-                new_entries.append({
-                    "Date": str(date.today()), "Médicament": name, "Prise": txt_prise, "Moment Repas": meds[name]["timing"], 
-                    "Symptômes Traitement": ", ".join(symp_med_choisis) if symp_med_choisis else "Aucun",
-                    "Symptômes SOPK/Pré-Diabète": ", ".join(symp_cycle_choisis) if symp_cycle_choisis else "Aucun", "Note": note_jour
-                })
-            save_json(meds, MEDS_FILE)
-            history_df = pd.concat([history_df, pd.DataFrame(new_entries)], ignore_index=True)
-            save_df(history_df, HISTORY_FILE)
-            st.success("🎉 C'est bien enregistré dans ton historique !")
-            redemarrer()
+
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
     st.subheader("📅 Prises du jour & Vos Symptômes")
