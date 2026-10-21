@@ -6,15 +6,14 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- ÉCRAN DE SÉCURITÉ PAR URL ULTRA-PRATIQUE (SANS COMPOSANT CAPRICIEUX) ---
+# --- SYSTÈME DE MÉMOIRE PAR COOKIES INVISIBLE ET SÉCURISÉ ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# L'application regarde si le code secret est présent tout au bout de l'adresse internet
-parametres_url = st.query_params
-code_dans_url = parametres_url.get("code", "")
+# L'application vérifie si ton iPhone a déjà le cookie de mémoire enregistré
+cookie_securise = st.context.cookies.get("session_therapy_private_token")
 
-if code_dans_url == "2605":
+if cookie_securise == "active_2605":
     st.session_state["authentifie"] = True
 
 if not st.session_state["authentifie"]:
@@ -24,12 +23,15 @@ if not st.session_state["authentifie"]:
     if st.button("🔓 Ouvrir mon application"):
         if mot_de_passe == "2605":
             st.session_state["authentifie"] = True
+            # On dépose le cookie permanent dans l'iPhone pour qu'il s'en souvienne
+            st.context.cookies["session_therapy_private_token"] = "active_2605"
             st.rerun()
         else:
             st.error("❌ Mot de passe incorrect. Accès refusé.")
     st.stop()
 
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
+
 
 MEDS_FILE = "medicaments.json"
 HISTORY_FILE = "historique.json"
