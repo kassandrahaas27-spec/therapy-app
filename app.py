@@ -6,8 +6,7 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- ENTRÉE DIRECTE SANS CODE ---
-
+# --- ENTRÉE DIRECTE SANS CODE SÉCURISÉE PAR EMAIL ---
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
 MEDS_FILE = "medicaments.json"
@@ -128,9 +127,8 @@ if meds:
             st.sidebar.success("🚨 Médicament supprimé !")
             redemarrer()
 
-# --- DISTRIBUTION COMMUNE DES ONGLETS ---
+# --- ONGLETS PRINCIPAUX ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections"])
-
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
     st.subheader("📅 Prises du jour & Vos Symptômes")
@@ -145,7 +143,6 @@ with tab1:
             col_m, col_mid, col_s = st.columns(3)
             matin_check, midi_check, soir_check = False, False, False
             
-            # SECURITE UNIQUE INCASSABLE CONTRE LE BUG DUPLICATEELEMENTKEY
             with col_m:
                 if info.get("prend_matin", True): 
                     matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_unique_key_securisee")
@@ -197,177 +194,16 @@ with tab1:
             save_df(history_df, HISTORY_FILE)
             st.success("🎉 C'est bien enregistré dans ton historique !")
             redemarrer()
-   # --- TAB 2 : MON SUIVI FÉMININ ---
-with tab2:
-    if parcours_mode == "Suivi de Cycle & Essai Bébé":
-        st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
-        st.info("💡 L'application cherche une hausse thermique de 0.3°C stable sur ta courbe pour valider l'ovulation, peu importe la durée de ton cycle (40 à 256 jours).")
+        # --- ENRICHISSEMENT ANNONCES ET DOSSIER DU BÉBÉ ---
+        st.write("### 👶 Informations Secrètes sur Bébé(s)")
+        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"], index=["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"].index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
+        poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
         
-        cycle_date = st.date_input("🗓️ Date de l'événement (Aujourd'hui ou passé)", value=date.today(), key="t2_date_ess")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1: cycle_status = st.selectbox("Statut du jour", ["Aucun Status", "🩸 Début des Règles", "❌ Fin des Règles", "💧 Spotting (Pertes)", "🥚 Test d'Ovulation Positif"], key="t2_status_ess")
-        with col_c2: temperature = st.number_input("Température basale (°C)", min_value=35.0, max_value=41.0, value=36.5, step=0.05, key="t2_temp_ess")
-            
-        rapport_sexuel = st.checkbox("💞 Rapport sexuel ce jour-là", value=False, key="t2_rapport_ess")
-        c_note = st.text_input("Notes particulières (ex: glaire blanc d'œuf, tiraillements)", key="t2_note_ess")
-        
-        if st.button("📊 Enregistrer cette journée de cycle", key="t2_submit_cycle_direct"):
-            if not cycle_df.empty: cycle_df = cycle_df[cycle_df["Date"] != str(cycle_date)]
-            new_cycle = pd.DataFrame([{"Date": str(cycle_date), "Cycle Status": cycle_status, "Température": temperature, "Rapport Sexuel": "Oui" if rapport_sexuel else "Non", "Note": c_note, "Mode Parcours": "Essai Bébé"}])
-            cycle_df = pd.concat([cycle_df, new_cycle], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-            save_df(cycle_df, CYCLE_FILE)
-            st.success("🎉 Journée de cycle sauvegardée !")
-            redemarrer()
-                
-        if not cycle_df.empty:
-            cycle_df = cycle_df.sort_values(by="Date").reset_index(drop=True)
-            import altair as alt
-            graphique_zoome = alt.Chart(cycle_df.copy()).mark_line(point=True, color="#1f77b4").encode(
-                x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
-            ).properties(width=450, height=250)
-            st.altair_chart(graphique_zoome, use_container_width=False)
-    elif parcours_mode == "Suivi de Grossesse Évolutif":
-        st.subheader("🤰 Mon Calendrier Obstétrical Connecté (SA + J)")
-        
-        poids_config = load_json("config_grossesse.json")
-        
-        # CHERCHE AUTOMATIQUEMENT L'OVULATION DETECTEE DANS L'HISTORIQUE DE TA COURBE
-        ovulation_automatique = None
-        if not cycle_df.empty:
-            cycle_df_tri = cycle_df.sort_values(by="Date").reset_index(drop=True)
-            temps_list = cycle_df_tri["Température"].tolist()
-            dates_list = cycle_df_tri["Date"].tolist()
-            if len(temps_list) >= 4:
-                for i in range(3, len(temps_list)):
-                    moyenne_avant = sum(temps_list[i-3:i]) / 3
-                    if temps_list[i] >= moyenne_avant + 0.28 and all(t >= moyenne_avant + 0.2 for t in temps_list[i:min(i+3, len(temps_list))]):
-                        ovulation_automatique = datetime.strptime(dates_list[i], "%Y-%m-%d").date()
-
-        # Options d'ajustement de la date
-        if ovulation_automatique:
-            st.success(f"🥚 **Lien Courbe activé :** Une ovulation a été détectée sur ta courbe le **{ovulation_automatique.strftime('%d/%m/%Y')}**. L'application l'utilise pour calculer tes SA.")
-            methode_calcul = st.radio("Méthode de calcul :", ["Utiliser l'ovulation automatique de ma courbe", "Entrer une autre date de terme (DPA)"], key="t2_methode_calcul")
-        else:
-            st.info("💡 Aucune hausse thermique stable n'a été détectée sur ta courbe pour le moment. Renseigne une date manuellement.")
-            methode_calcul = st.radio("Méthode de calcul :", ["Entrer ma date d'ovulation / conception manuelle", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
-
-        # Calcul des dates charnières
-        if methode_calcul == "Utiliser l'ovulation automatique de ma courbe" and ovulation_automatique:
-            date_ovul = ovulation_automatique
-            date_terme = date_ovul + timedelta(days=273)
-        elif "date d'ovulation" in methode_calcul or methode_calcul == "Entrer ma date d'ovulation / conception manuelle":
-            ovul_defaut = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
-            date_ovul = st.date_input("🗓️ Date de ton ovulation / conception :", value=datetime.strptime(ovul_defaut, "%Y-%m-%d").date(), key="t2_grossesse_ovul")
-            date_terme = date_ovul + timedelta(days=273)
-        else:
-            dpa_defaut = poids_config.get("dpa", str(date.today() + timedelta(days=240)))
-            date_terme = st.date_input("🗓️ Date Prévue d'Accouchement (Terme) :", value=datetime.strptime(dpa_defaut, "%Y-%m-%d").date(), key="t2_grossesse_dpa")
-            date_ovul = date_terme - timedelta(days=273)
-
-        if st.button("💾 Valider et enregistrer ce calendrier", key="btn_save_dpa_sopk_connect"):
-            poids_config["dpa"] = str(date_terme)
-            poids_config["date_ovulation"] = str(date_ovul)
+        if st.button("💾 Sauvegarder les informations du Bébé", key="btn_save_info_bebe_final"):
             save_json(poids_config, "config_grossesse.json")
-            st.success("🎉 Calendrier mis à jour et synchronisé !")
+            st.success("🎉 Informations obstétricales enregistrées avec succès !")
             redemarrer()
-            
-        date_debut_sa = date_ovul - timedelta(days=14)
-        jours_totaux_sa = (date.today() - date_debut_sa).days
-        
-        if 0 <= jours_totaux_sa <= 287:
-            sa_semaines = jours_totaux_sa // 7
-            sa_jours = jours_totaux_sa % 7
-            
-            if sa_semaines <= 6: mois_txt = "1er mois (1er Trimestre)"
-            elif 7 <= sa_semaines <= 10: mois_txt = "2ème mois (1er Trimestre)"
-            elif 11 <= sa_semaines <= 15: mois_txt = "3ème mois (1er Trimestre)"
-            elif 16 <= sa_semaines <= 19: mois_txt = "4ème mois (2ème Trimestre)"
-            elif 20 <= sa_semaines <= 24: mois_txt = "5ème mois (2ème Trimestre)"
-            elif 25 <= sa_semaines <= 28: mois_txt = "6ème mois (2ème Trimestre)"
-            elif 29 <= sa_semaines <= 32: mois_txt = "7ème mois (3ème Trimestre)"
-            elif 33 <= sa_semaines <= 36: mois_txt = "8ème mois (3ème Trimestre)"
-            else: mois_txt = "9ème mois (3ème Trimestre)"
-            
-            st.info(f"✨ Stade actuel : **{sa_semaines} SA + {sa_jours} jours** — Vous êtes dans ton **{mois_txt}**.")
-            st.caption(f"📅 Conception retenue : {date_ovul.strftime('%d/%m/%Y')} | Terme estimé : {date_terme.strftime('%d/%m/%Y')} (J-{ (date_terme - date.today()).days }).")
-            
-            st.write("### 📅 Mon Calendrier de Suivi Médical & Démarches")
-            echo_datation_deb = date_debut_sa + timedelta(days=49)
-            echo_datation_fin = date_debut_sa + timedelta(days=69)
-            echo1_debut = date_debut_sa + timedelta(days=77)
-            echo1_fin = date_debut_sa + timedelta(days=97)
-            echo2_debut = date_debut_sa + timedelta(days=140)
-            echo2_fin = date_debut_sa + timedelta(days=174)
-            echo3_debut = date_debut_sa + timedelta(days=210)
-            echo3_fin = date_debut_sa + timedelta(days=244)
-            
-            st.markdown(f"""
-            * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation (conseillée avec le SOPK).
-            * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obligatoire)** + Dépistage Trisomie 21. **Démarches :** Envoi déclaration CPAM/CAF et inscription maternité.
-            * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
-            * **🩺 De 20 à 24 SA (Du {echo2_debut.strftime('%d/%m/%Y')} au {echo2_fin.strftime('%d/%m/%Y')}) :** **Échographie T2 Morphologique**.
-            * **🧪 De 24 à 28 SA (Du {(date_debut_sa + timedelta(days=168)).strftime('%d/%m/%Y')} au {(date_debut_sa + timedelta(days=196)).strftime('%d/%m/%Y')}) :** **Dépistage du Diabète Gestationnel (Test HGPO)**. Dentiste gratuit.
-            * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
-            * **🏥 Au 8ème mois :** Consultation d'anesthésie obligatoire pour la péridurale.
-            """)
-            
-            st.write("### 📢 L'évolution de bébé cette semaine")
-            if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends bien ton acide folique.")
-            elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
-            elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
-            elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
-            elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
-            elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
-            elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
-            elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
-            else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
-            
-            st.write("### 💡 Mon Coin Future Maman : Idées & Conseils de Vie")
-            c_a1, c_a2 = st.columns(2)
-            with c_a1:
-                with st.expander("🎁 Idées magiques pour l'annoncer au Papa"):
-                    st.markdown("""
-                    * **☕ La tasse magique :** Offre-lui un café dans une tasse thermoréactive qui affiche 'Tu vas être papa'.
-                    * **🔑 Le trousseau de clés :** Ajoute un petit porte-clés écrit 'Super Papa' sur ses clés de voiture.
-                    * **🍕 Le dîner surprise :** Commande une pizza et écris un message à l'intérieur du couvercle de la boîte.
-                    """)
-            with c_a2:
-                with st.expander("🥳 Idées d'annonces originales pour la Famille"):
-                    st.markdown("""
-                    * **🧩 Le puzzle personnalisé :** Fais-leur assembler un petit puzzle qui révèle une photo de ton échographie.
-                    * **🥠 Les biscuits de la fortune :** Sers des 'Fortune Cookies' avec ton message caché à l'intérieur.
-                    * **📸 La photo de groupe piégée :** Mets-toi en mode vidéo et crie 'Je suis enceinte !' pour filmer leurs réactions en direct.
-                    """)
-            with st.expander("🚶‍♀️ Conseils de survie quotidiens (Spécial 1ère Grossesse & SOPK)"):
-                st.markdown("""
-                * **💤 Fatigue intense :** C'est le travail colossal du placenta. Fais des siestes de 20 minutes.
-                * **🤢 Nausées matinales :** Garde des amandes sur ta table de chevet à grignoter avant de te lever.
-                * **📉 Équilibre Pré-diabète :** Conserve l'ordre de tes assiettes (Fibres en premier, protéines, puis glucides) pour éviter les pics de sucre fatiguants.
-                """)
-        else:
-            st.warning("Veuillez renseigner une date valide.")
-
-    elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
-        st.subheader("🧬 Mon Carnet de Bord de Protocole PMA")
-        st.info("💡 Suis avec précision chaque étape de ton protocole (FIV, ICSI, Insémination) pour ne rater aucune injection cruciale.")
-        
-        pma_date_click = st.date_input("🗓️ Date du contrôle / injection", value=date.today(), key="t2_pma_date_click")
-        col_p1, col_p2 = st.columns(2)
-        with col_p1: pma_etape = st.selectbox("Étape :", ["Blocage ovarien", "Stimulation folliculaire", "Déclenchement", "Ponction", "Transfert d'embryon", "Attente Prise de Sang"], key="t2_pma_etape_sel")
-        with col_p2: pma_med = st.text_input("Médicament / Dose (ex: Gonal 150 UI)", key="t2_pma_med_txt")
-        pma_echo = st.text_input("Résultats Échographie / Prise de sang", key="t2_pma_echo_txt")
-        pma_notes = st.text_input("Symptômes et consignes", key="t2_pma_notes_txt")
-        if st.button("💾 Enregistrer cette étape PMA", key="btn_submit_pma_direct"):
-            if not pma_df.empty: pma_df = pma_df[pma_df["Date"] != str(pma_date_click)]
-            new_pma_line = pd.DataFrame([{"Date": str(pma_date_click), "Étape Protocole": pma_etape, "Médicament / Injection": pma_med, "Résultats Échographie": pma_echo, "Notes & Symptômes": pma_notes}])
-            pma_df = pd.concat([pma_df, new_pma_line], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-            save_df(pma_df, PMA_FILE)
-            st.success("🧬 Étape PMA enregistrée !")
-            redemarrer()
-        if not pma_df.empty: st.dataframe(pma_df, use_container_width=True)
-
-   
-   # --- TAB 3 : RDV MEDICAUX ---
+# --- TAB 3 : RDV MEDICAUX ---
 with tab3:
     st.subheader("📅 Gestion de tes Rendez-vous Médicaux")
     col_r1, col_r2, col_r3 = st.columns(3)
@@ -375,7 +211,7 @@ with tab3:
     with col_r2: rdv_time = st.text_input("Heure", placeholder="14:30", key="t3_time")
     with col_r3: rdv_doc = st.text_input("Médecin / Spécialité", placeholder="Gynécologue", key="t3_doc")
     rdv_place = st.text_input("🏢 Lieu / Adresse du RDV", placeholder="Cabinet privé, Clinique, Hôpital...", key="t3_place")
-    rdv_note = st.text_input("Motif ou notes importantes (ex: Échographie)", key="t3_note")
+    rdv_note = st.text_input("Motif ou notes (ex: Échographie)", key="t3_note")
     if st.button("📌 Ajouter ce rendez-vous", key="t3_submit_direct"):
         new_rdv = pd.DataFrame([{"Date": str(rdv_date), "Heure": rdv_time, "Médecin / Spécialité": rdv_doc, "Lieu": rdv_place, "Notes": rdv_note}])
         rdv_df = pd.concat([rdv_df, new_rdv], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
@@ -383,8 +219,7 @@ with tab3:
         st.success("🎉 Rendez-vous ajouté avec succès !")
         redemarrer()
     if not rdv_df.empty: st.dataframe(rdv_df, use_container_width=True)
-
-   # --- TAB 4 : SUIVI GLYCÉMIE & NUTRITION (AVEC LE POIDS ICI) ---
+# --- TAB 4 : SUIVI GLYCÉMIE & NUTRITION ---
 with tab4:
     st.subheader("🥗 Mon Suivi & Objectifs Pré-Diabète")
     st.info("💪 **Chaque petit pas compte !** Ton corps a besoin de bienveillance. La Metformine travaille main dans la main avec tes repas triés.")
@@ -457,7 +292,6 @@ with tab4:
         st.success("🥤 Enregistré !"); redemarrer()
 
     st.write("---")
-    # --- LE BLOC DE POIDS EST ICI DANS L'ONGLET PRE-DIABETE ---
     st.write("### ⚖️ 5. Mon Suivi de Poids Hebdomadaire & IMC")
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1: poids_date = st.date_input("🗓️ Date de la pesée", value=date.today(), key="t4_poids_date")
@@ -480,7 +314,7 @@ with tab4:
         st.markdown(f"🔹 Votre **IMC actuel est de {imc}**.")
         if imc < 18.5: st.warning("⚠️ **Interprétation : Insuffisance pondérale.**")
         elif 18.5 <= imc <= 24.9: st.success("🟢 **Interprétation : Corpulence normale (Poids santé).**")
-        elif 25.0 <= imc <= 29.9: st.info("🟡 **Interprétation : Surpoids.** Fréquent avec la résistance à l'insuline du SOPK.")
+        elif 25.0 <= imc <= 29.9: st.info("🟡 **Interprétation : Surpoids.**")
         else: st.error("🔴 **Interprétation : Obésité.**")
 
         if len(poids_df_local) >= 2:
@@ -489,8 +323,8 @@ with tab4:
             avant_dernier_p = poids_df_local["Poids (kg)"].iloc[-2]
             diff = round(dernier_p - avant_dernier_p, 1)
             st.write(f"#### 🔄 Écart de poids en direct :")
-            if diff < 0: st.success(f"📉 **Félicitations !** Tu as perdu **{-diff} kg** depuis ta dernière pesée !")
-            elif diff > 0: st.warning(f"📈 **Note :** Tu as pris **+{diff} kg** par rapport à la fois d'avant.")
+            if diff < 0: st.success(f"📉 **Félicitations !** Tu as perdu **{-diff} kg** since ta pesée précédente !")
+            elif diff > 0: st.warning(f"📈 **Note :** Tu as pris **+{diff} kg**.")
             else: st.info("⚖️ **Stabilité parfaite !**")
 
         st.write("#### 📈 Ta Courbe d'Évolution du Poids")
@@ -532,7 +366,7 @@ with tab5:
         edited_pma_df = st.data_editor(pma_df, use_container_width=True, num_rows="dynamic", key="editor_pma_table_final_repare")
         if st.button("💾 Sauvegarder les modifications du Protocole PMA", key="btn_save_edited_pma_final"):
             save_df(edited_pma_df, PMA_FILE); st.success("🎉 Dossier de suivi PMA mis à jour !"); redemarrer()
-    else: st.caption("Le journal de protocole PMA est vide pour le moment.")
+    else: st.caption("Le journal de protocole PMA is vide pour le moment.")
     
     st.write("---")
     st.write("**Journal Unique Métabolique (Une ligne par jour) :**")
