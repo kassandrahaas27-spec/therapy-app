@@ -384,10 +384,6 @@ with tab2:
         st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
         grossesse_risque = st.checkbox("⚠️ Activer le suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
         if grossesse_risque:
-        # --- VIGILANCE GROSSESSE À RISQUE ---
-        st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
-        grossesse_risque = st.checkbox("⚠️ Activer le suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
-        if grossesse_risque:
             st.warning("🛑 **Protocole Vigilance Activé : Spécial SOPK & Résistance à l'insuline.**")
             with st.expander("🚨 ALERTE ROUGE : Quand consulter immédiatement les urgences maternité ?"):
                 st.markdown("* **🩸 Saignements vaginaux**\n* **⚡ Contractions utérines douloureuses et régulières**\n* **🫨 Signes de Tension Élevée (Pré-éclampsie)**")
