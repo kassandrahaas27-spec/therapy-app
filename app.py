@@ -6,43 +6,28 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- ÉCRAN DE SÉCURITÉ ET VERROUILLAGE PRIVÉ ---
-# --- ÉCRAN DE SÉCURITÉ, COOKIES & VERROUILLAGE PRIVÉ AUTOMATIQUE ---
-import extra_streamlit_components as stx
-
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
-
-# On vérifie si l'iPhone possède déjà le jeton de connexion automatique
+# --- ÉCRAN DE SÉCURITÉ PAR URL ULTRA-PRATIQUE (SANS COMPOSANT CAPRICIEUX) ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# Récupération sécurisée du cookie de mémoire
-cookie_auth = cookie_manager.get(cookie="therapy_login_session_token")
+# L'application regarde si le code secret est présent tout au bout de l'adresse internet
+parametres_url = st.query_params
+code_dans_url = parametres_url.get("code", "")
 
-if cookie_auth == "session_active_2605":
+if code_dans_url == "2605":
     st.session_state["authentifie"] = True
 
 if not st.session_state["authentifie"]:
     st.title("🔒 Accès Privé - Mon Suivi Therapy")
     mot_de_passe = st.text_input("Entre ton mot de passe personnel pour ouvrir ton carnet :", type="password")
     
-    # Petite case à cocher magique pour ne plus retaper le code
-    se_souvenir = st.checkbox("🔄 Rester connectée sur cet appareil (Se souvenir de moi pendant 30 jours)", value=True)
-    
     if st.button("🔓 Ouvrir mon application"):
         if mot_de_passe == "2605":
             st.session_state["authentifie"] = True
-            if se_souvenir:
-                # Gravure du jeton secret dans l'iPhone pour 30 jours complets
-                cookie_manager.set(cookie="therapy_login_session_token", val="session_active_2605", expires_at=datetime.now() + timedelta(days=30))
             st.rerun()
         else:
             st.error("❌ Mot de passe incorrect. Accès refusé.")
     st.stop()
-
 
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
