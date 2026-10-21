@@ -369,10 +369,31 @@ with tab2:
         poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Winter Surprise 🤫")), key="t2_genre_bebe_sel")
         poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
 
-        # --- RANGE-DOCUMENTS ---
-        with st.expander("📁 Range-Documents : Mesures Échographies & Bilans"):
-            poids_config["doc_lcc"] = st.text_input("Longueur Cranio-Caudale T1 (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
-            poids_config["doc_poids_est"] = st.text_input("Poids estimé de bébé (en grammes) :", value=poids_config.get("doc_poids_est", ""), key="t2_poids_est")
+        # --- CARNET DE BORD CLINIQUE ET RANGE-DOCUMENTS ULTRA COMPLET ---
+        with st.expander("📁 Range-Documents : Mesures Échographies, Suivi Sage-Femme & Monitorings"):
+            st.caption("💡 Centralise ici tes résultats médicaux officiels pour les avoir sous les yeux face aux spécialistes :")
+            
+            st.markdown("**🖼️ ÉCHOGRAPHIES OBSTÉTRICALES :**")
+            poids_config["doc_lcc"] = st.text_input("Écho T1 - Longueur Cranio-Caudale (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
+            poids_config["doc_cn"] = st.text_input("Écho T1 - Clarté Nucale (CN en mm) :", value=poids_config.get("doc_cn", ""), key="t2_cn")
+            poids_config["doc_bip"] = st.text_input("Écho T2 - Diamètre Bi-Pariétal de la tête (BIP en mm) :", value=poids_config.get("doc_bip", ""), key="t2_bip")
+            poids_config["doc_poids_est"] = st.text_input("Écho T3 - Estimation du poids fœtal actuel (en grammes) :", value=poids_config.get("doc_poids_est", ""), key="t2_poids_est")
+            
+            st.markdown("---")
+            st.markdown("**🩺 CONSULTATIONS SAGE-FEMME / GYNECO :**")
+            poids_config["doc_col"] = st.text_input("Mesure ou état du Col Utérin (ex: Long, Tonique, Fermé) :", value=poids_config.get("doc_col", ""), key="t2_col")
+            poids_config["doc_hu"] = st.text_input("Hauteur Utérine (HU en cm) :", value=poids_config.get("doc_hu", ""), key="t2_hu")
+            poids_config["doc_tension"] = st.text_input("Tension artérielle maximale lue en cabinet (ex: 12/7) :", value=poids_config.get("doc_tension", ""), key="t2_tension")
+            
+            st.markdown("---")
+            st.markdown("**💓 MONITORINGS DU 3ÈME TRIMESTRE (RCF) :**")
+            poids_config["doc_monitoring"] = st.text_input("Rythme Cardiaque Fœtal & Contractions (ex: Réactif, RAS) :", value=poids_config.get("doc_monitoring", ""), key="t2_monit")
+            
+            st.markdown("---")
+            st.markdown("**🩸 BILANS BIOLOGIQUES (LABORATOIRE) :**")
+            poids_config["doc_toxo"] = st.selectbox("Statut Sérologie Toxoplasmose :", ["Non immunisée (Prise de sang mensuelle obligatoire) 🩸", "Immunisée ✅"], index=0 if poids_config.get("doc_toxo", "") == "" or "Non" in poids_config.get("doc_toxo", "") else 1, key="t2_toxo_stat")
+            poids_config["doc_glycosurie"] = st.text_input("Analyse d'urine mensuelle - Glycosurie (g/L) :", value=poids_config.get("doc_glycosurie", ""), key="t2_glycurie")
+            poids_config["doc_albuminurie"] = st.text_input("Analyse d'urine mensuelle - Albuminurie / Protéinurie (g/L) :", value=poids_config.get("doc_albuminurie", ""), key="t2_alburie")
         
         # --- CHECKLIST COMPLETISSIME VALISE MATERNITÉ ---
         with st.expander("🍼 Checklist : La Valise de Maternité Complète (Maman, Bébé & Papa)"):
