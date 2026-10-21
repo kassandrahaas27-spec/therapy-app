@@ -54,9 +54,15 @@ poids_df_local = load_db_from_supabase("suivi_poids", ["Date", "Poids (kg)", "No
 # Chargement des configurations de médicaments
 try:
     meds_response = supabase.table("medicaments").select("*").execute()
-    meds = {row["name"]: json.loads(row["config"]) for row in meds_response.data} if meds_response.data else {}
-except:
     meds = {}
+    if meds_response.data:
+        for row in meds_response.data:
+            if isinstance(row, dict) and "name" in row and "config" in row:
+                meds[row["name"]] = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
+except Exception as e:
+    st.sidebar.error(f"Erreur lecture médicaments : {e}")
+    meds = {}
+
 
 # Chargement configuration bébé
 try:
