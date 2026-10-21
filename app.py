@@ -59,6 +59,7 @@ rdv_df = load_df(RDV_FILE, ["Date", "Heure", "Médecin / Spécialité", "Lieu", 
 glyc_df_local = load_df(GLYC_FILE, ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale", "Petit-Déjeuner", "Déjeuner", "Dîner", "Dessert / Plaisir", "Grignotage / Encas", "Activité Physique", "Hydratation (Verres)", "Conseils & Alertes"])
 poids_df_local = load_df(POIDS_FILE, ["Date", "Poids (kg)", "Note", "Taille (cm)"])
 pma_df = load_df(PMA_FILE, ["Date", "Étape Protocole", "Médicament / Injection", "Résultats Échographie", "Notes & Symptômes"])
+poids_config = load_json("config_grossesse.json")
 
 # --- ALERTE STOCKS FAIBLES ---
 alertes = [name for name, info in meds.items() if int(info.get("stock", 0)) <= 5]
@@ -142,16 +143,13 @@ with tab1:
             st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{info.get('nb_cachet_par_repas', 1)} cachet(s)** ({info.get('timing')})")
             col_m, col_mid, col_s = st.columns(3)
             matin_check, midi_check, soir_check = False, False, False
-            
+            stock_key_id = int(info.get("stock", 0))
             with col_m:
-                if info.get("prend_matin", True): 
-                    matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_unique_key_securisee")
+                if info.get("prend_matin", True): matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_unique_key_securisee")
             with col_mid:
-                if info.get("prend_midi", False): 
-                    midi_check = st.checkbox("☀️ Pris le Midi", key=f"t1_{name}_midi_unique_key_securisee")
+                if info.get("prend_midi", False): midi_check = st.checkbox("☀️ Pris le Midi", key=f"t1_{name}_midi_unique_key_securisee")
             with col_s:
-                if info.get("prend_soir", True): 
-                    soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soir_unique_key_securisee")
+                if info.get("prend_soir", True): soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soir_unique_key_securisee")
                     
             prises_details[name] = {"Matin": matin_check, "Midi": midi_check, "Soir": soir_check, "dose_unitaire": info.get("nb_cachet_par_repas", 1)}
             st.write("---")
@@ -194,15 +192,173 @@ with tab1:
             save_df(history_df, HISTORY_FILE)
             st.success("🎉 C'est bien enregistré dans ton historique !")
             redemarrer()
-        # --- ENRICHISSEMENT ANNONCES ET DOSSIER DU BÉBÉ ---
-        st.write("### 👶 Informations Secrètes sur Bébé(s)")
-        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"], index=["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"].index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
-        poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
+# --- TAB 2 : MON SUIVI FÉMININ ---
+with tab2:
+    if parcours_mode == "Suivi de Cycle & Essai Bébé":
+        st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
+        st.info("💡 L'application cherche une hausse thermique de 0.3°C stable sur ta courbe pour valider l'ovulation, peu importe la durée de ton cycle (40 à 256 jours).")
         
-        if st.button("💾 Sauvegarder les informations du Bébé", key="btn_save_info_bebe_final"):
-            save_json(poids_config, "config_grossesse.json")
-            st.success("🎉 Informations obstétricales enregistrées avec succès !")
+        cycle_date = st.date_input("🗓️ Date de l'événement (Aujourd'hui ou passé)", value=date.today(), key="t2_date_ess")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1: cycle_status = st.selectbox("Statut du jour", ["Aucun Status", "🩸 Début des Règles", "❌ Fin des Règles", "💧 Spotting (Pertes)", "🥚 Test d'Ovulation Positif"], key="t2_status_ess")
+        with col_c2: temperature = st.number_input("Température basale (°C)", min_value=35.0, max_value=41.0, value=36.5, step=0.05, key="t2_temp_ess")
+            
+        rapport_sexuel = st.checkbox("💞 Rapport sexuel ce jour-là", value=False, key="t2_rapport_ess")
+        c_note = st.text_input("Notes particulières (ex: glaire blanc d'œuf, tiraillements)", key="t2_note_ess")
+        
+        if st.button("📊 Enregistrer cette journée de cycle", key="t2_submit_cycle_direct"):
+            if not cycle_df.empty: cycle_df = cycle_df[cycle_df["Date"] != str(cycle_date)]
+            new_cycle = pd.DataFrame([{"Date": str(cycle_date), "Cycle Status": cycle_status, "Température": temperature, "Rapport Sexuel": "Oui" if rapport_sexuel else "Non", "Note": c_note, "Mode Parcours": "Essai Bébé"}])
+            cycle_df = pd.concat([cycle_df, new_cycle], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
+            save_df(cycle_df, CYCLE_FILE)
+            st.success("🎉 Journée de cycle sauvegardée !")
             redemarrer()
+                
+        if not cycle_df.empty:
+            cycle_df = cycle_df.sort_values(by="Date").reset_index(drop=True)
+            import altair as alt
+            graphique_zoome = alt.Chart(cycle_df.copy()).mark_line(point=True, color="#1f77b4").encode(
+                x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
+            ).properties(width=450, height=250)
+            st.altair_chart(graphique_zoome, use_container_width=False)
+    elif parcours_mode == "Suivi de Grossesse Évolutif":
+        st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
+        st.info("💡 Spécial SOPK : En raison de cycles irréguliers, ce calendrier se base sur ta date d'ovulation (conception) ou sur la datation de ton échographie pour calculer ton terme exact.")
+        
+        poids_config = load_json("config_grossesse.json")
+        methode_calcul = st.radio("Méthode pour caler ton calendrier :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
+        
+        if methode_calcul == "Entrer ma date d'ovulation / conception":
+            ovul_defaut = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
+            date_ovul = st.date_input("🗓️ Date exacte de ton ovulation (ou conception) :", value=datetime.strptime(ovul_defaut, "%Y-%m-%d").date(), key="t2_grossesse_ovul")
+            date_terme = date_ovul + timedelta(days=273)
+        else:
+            dpa_defaut = poids_config.get("dpa", str(date.today() + timedelta(days=240)))
+            date_terme = st.date_input("🗓️ Date Prévue d'Accouchement (Terme officiel) :", value=datetime.strptime(dpa_defaut, "%Y-%m-%d").date(), key="t2_grossesse_dpa")
+            date_ovul = date_terme - timedelta(days=273)
+
+        if st.button("💾 Sauvegarder et recalculer mon calendrier", key="btn_save_dpa_sopk"):
+            poids_config["dpa"] = str(date_terme)
+            poids_config["date_ovulation"] = str(date_ovul)
+            save_json(poids_config, "config_grossesse.json")
+            st.success("🎉 Calendrier recalculé avec succès sur la base de ton ovulation !")
+            redemarrer()
+            
+        date_debut_sa = date_ovul - timedelta(days=14)
+        jours_totaux_sa = (date.today() - date_debut_sa).days
+        
+        if 0 <= jours_totaux_sa <= 287:
+            sa_semaines = jours_totaux_sa // 7
+            sa_jours = jours_totaux_sa % 7
+            
+            if sa_semaines <= 6: mois_txt = "1er mois (1er Trimestre)"
+            elif 7 <= sa_semaines <= 10: mois_txt = "2ème mois (1er Trimestre)"
+            elif 11 <= sa_semaines <= 15: mois_txt = "3ème mois (1er Trimestre)"
+            elif 16 <= sa_semaines <= 19: mois_txt = "4ème mois (2ème Trimestre)"
+            elif 20 <= sa_semaines <= 24: mois_txt = "5ème mois (2ème Trimestre)"
+            elif 25 <= sa_semaines <= 28: mois_txt = "6ème mois (2ème Trimestre)"
+            elif 29 <= sa_semaines <= 32: mois_txt = "7ème mois (3ème Trimestre)"
+            elif 33 <= sa_semaines <= 36: mois_txt = "8ème mois (3ème Trimestre)"
+            else: mois_txt = "9ème mois (3ème Trimestre)"
+            
+            st.info(f"✨ Stade de ta grossesse : **{sa_semaines} SA + {sa_jours} jours** — Vous êtes dans ton **{mois_txt}**.")
+            st.caption(f"⏳ Date de conception retenue : {date_ovul.strftime('%d/%m/%Y')} | Terme officiel (41 SA) : {date_terme.strftime('%d/%m/%Y')} (Il reste {(date_terme - date.today()).days} jours).")
+            
+            # --- BLOC D'INFORMATIONS DU BEBE CENTRALISÉ ICI ---
+            st.write("### 👶 Informations Secrètes sur Bébé(s)")
+            genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
+            poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
+            poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
+            
+            # --- MODULE PREMIÈRE GROSSESSE & GROSSESSE À RISQUE ---
+            st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
+            grossesse_risque = st.checkbox("⚠️ Activer le protocole de suivi : Grossesse à risque obstétrical ou métabolique", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
+            
+            if grossesse_risque:
+                st.warning("🛑 **Protocole Vigilance Activé : Spécial SOPK & Résistance à l'insuline.** Ce guide médical et clinique vous accompagne pas à pas pour sécuriser votre premier bébé.")
+                
+                with st.expander("🚨 ALERTE ROUGE : Quand consulter immédiatement les urgences maternité ?"):
+                    st.markdown("""
+                    Si tu ressens l'un des symptômes suivants, n'attends jamais le lendemain, rends-toi tout de suite à la maternité de ton hôpital :
+                    * **🩸 Saignements vaginaux :** Qu'ils soient légers ou abondants, rouges ou sombres, ils imposent un contrôle d'intégrité placentaire immédiat.
+                    * **⚡ Contractions utérines douloureuses et régulières :** Si ton ventre se durcit de manière répétée avant le terme (plus de 4 à 10 fois par jour selon le mois), cela nécessite une mesure du col utérin.
+                    * **🫨 Signes de Tension Élevée (Pré-éclampsie) :** Maux de tête violents qui ne passent pas avec le paracétamol, mouches devant les yeux (phosphènes), bourdonnements d'oreilles ou gonflement soudain des mains et du visage (œdèmes).
+                    * **🍃 Baisse des mouvements de bébé :** Dès que tu es au stade où bébé bouge (après 20-22 SA), si tu constates qu'il ne bouge plus du tout ou beaucoup moins sur une demi-journée, allonge-toi sur le côté gauche pendant 1h. S'il ne réagit pas, consulte.
+                    """)
+                    
+                with st.expander("📉 Guide Clinique : Maîtriser mon Pré-Diabète / Diabète Gestationnel"):
+                    st.markdown("""
+                    La grossesse augmente naturellement la résistance à l'insuline. Avec un SOPK de base, la vigilance doit être doublée pour protéger la croissance de bébé :
+                    * **🎯 Les objectifs cibles de glycémie :** Rester rigoureusement en dessous de **0,92 g/L le matin à jeun**, et en dessous de **1,20 g/L deux heures après le début du repas**.
+                    * **💉 Autosurveillance et traitement :** Note chaque valeur dans ton onglet 4. Ta Metformine (ou l'insuline si prescrite par ton diabétologue) travaille pour éviter un excès de poids pour bébé (macrosomie).
+                    * **🥗 Hydratation pure :** Écarte totalement les sirops et sodas sucrés. Privilégie l'eau minérale pure pour aider tes reins à filtrer l'albuminurie mensuelle.
+                    """)
+            
+            with st.expander("🧠 Aide psychologique : Gérer le stress du premier bébé"):
+                st.markdown("""
+                * **🧘 Désamorcer l'anxiété :** Être perdue pour une première grossesse est un sentiment 100 % normal partagé par toutes les mamans. Le stress libère du cortisol, qui fait grimper la glycémie. 
+                * **⏱️ La technique des 5 respirations :** Dès que tu te sens submergée, assieds-toi confortablement, pose une main sur ton ventre et inspire par le nez pendant 4 secondes en gonflant le ventre, puis expire par la bouche pendant 6 secondes. Fais cela 5 fois de suite.
+                * **📝 Ton carnet de questions :** Note absolument tout ce qui te tracasse dans ton application pour pouvoir la lire à ta sage-femme ou ton gynécologue lors de ta consultation mensuelle obligatoire.
+                """)
+                
+            if st.button("💾 Sauvegarder mon dossier médical Bébé & Maman", key="btn_save_info_bebe_complet"):
+                poids_config["grossesse_risque"] = grossesse_risque
+                save_json(poids_config, "config_grossesse.json")
+                st.success("🎉 Toutes les informations obstétricales et cliniques ont été gravées dans ton dossier !")
+                redemarrer()
+            
+            st.write("---")
+            st.write("### 📅 Mon Calendrier de Suivi Médical & Démarches")
+            echo_datation_deb = date_debut_sa + timedelta(days=49)
+            echo_datation_fin = date_debut_sa + timedelta(days=69)
+            echo1_debut = date_debut_sa + timedelta(days=77)
+            echo1_fin = date_debut_sa + timedelta(days=97)
+            echo2_debut = date_debut_sa + timedelta(days=140)
+            echo2_fin = date_debut_sa + timedelta(days=174)
+            echo3_debut = date_debut_sa + timedelta(days=210)
+            echo3_fin = date_debut_sa + timedelta(days=244)
+            
+            st.markdown(f"""
+            * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation (conseillée avec le SOPK).
+            * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obstétricale Obligatoire)** + Dépistage Trisomie 21. **Démarches :** Envoi déclaration CPAM/CAF et inscription maternité.
+            * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
+            * **🩺 De 20 à 24 SA (Du {echo2_debut.strftime('%d/%m/%Y')} au {echo2_fin.strftime('%d/%m/%Y')}) :** **Échographie T2 Morphologique**.
+            * **🧪 De 24 à 28 SA (Du {(date_debut_sa + timedelta(days=168)).strftime('%d/%m/%Y')} au {(date_debut_sa + timedelta(days=196)).strftime('%d/%m/%Y')}) :** **Dépistage du Diabète Gestationnel (Test HGPO)**. Dentiste gratuit.
+            * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
+            * **🏥 Au 8ème mois :** Consultation d'anesthésie obligatoire pour la péridurale.
+            """)
+            
+            st.write("### 📢 L'évolution de bébé cette semaine")
+            if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends bien ton acide folique.")
+            elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
+            elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
+            elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
+            elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
+            elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
+            elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
+            elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
+            else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
+
+   
+    elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
+        st.subheader("🧬 Mon Carnet de Bord de Protocole PMA")
+        st.info("💡 Suis avec précision chaque étape de ton protocole (FIV, ICSI, Insémination) pour ne rater aucune injection cruciale.")
+        
+        pma_date_click = st.date_input("🗓️ Date du contrôle / injection", value=date.today(), key="t2_pma_date_click")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1: pma_etape = st.selectbox("Étape :", ["Blocage ovarien", "Stimulation folliculaire", "Déclenchement", "Ponction", "Transfert d'embryon", "Attente Prise de Sang"], key="t2_pma_etape_sel")
+        with col_p2: pma_med = st.text_input("Médicament / Dose (ex: Gonal 150 UI)", key="t2_pma_med_txt")
+        pma_echo = st.text_input("Résultats Échographie / Prise de sang", key="t2_pma_echo_txt")
+        pma_notes = st.text_input("Symptômes et consignes", key="t2_pma_notes_txt")
+        if st.button("💾 Enregistrer cette étape PMA", key="btn_submit_pma_direct"):
+            if not pma_df.empty: pma_df = pma_df[pma_df["Date"] != str(pma_date_click)]
+            new_pma_line = pd.DataFrame([{"Date": str(pma_date_click), "Étape Protocole": pma_etape, "Médicament / Injection": pma_med, "Résultats Échographie": pma_echo, "Notes & Symptômes": pma_notes}])
+            pma_df = pd.concat([pma_df, new_pma_line], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
+            save_df(pma_df, PMA_FILE)
+            st.success("🧬 Étape PMA enregistrée !")
+            redemarrer()
+        if not pma_df.empty: st.dataframe(pma_df, use_container_width=True)
+
 # --- TAB 3 : RDV MEDICAUX ---
 with tab3:
     st.subheader("📅 Gestion de tes Rendez-vous Médicaux")
@@ -219,6 +375,7 @@ with tab3:
         st.success("🎉 Rendez-vous ajouté avec succès !")
         redemarrer()
     if not rdv_df.empty: st.dataframe(rdv_df, use_container_width=True)
+
 # --- TAB 4 : SUIVI GLYCÉMIE & NUTRITION ---
 with tab4:
     st.subheader("🥗 Mon Suivi & Objectifs Pré-Diabète")
@@ -383,3 +540,4 @@ with tab5:
     if not cycle_df.empty:
         edited_cycle_df = st.data_editor(cycle_df, use_container_width=True, num_rows="dynamic", key="editor_cycle_table_final_repare")
         if st.button("💾 Sauvegarder les modifications du Cycle", key="btn_save_edited_cycle_final_repare"): save_df(edited_cycle_df, CYCLE_FILE); st.success("🎉 Tableau de cycle corrigé !"); redemarrer()
+
