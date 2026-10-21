@@ -293,10 +293,10 @@ with tab2:
                 st.metric(label="Chances de conception estimées", value="10% - 15%", delta="Phase standard / d'attente")
 
     elif parcours_mode == "Suivi de Grossesse Évolutif":
+    elif parcours_mode == "Suivi de Grossesse Évolutif":
         st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
         
-        st.info("💡 Spécial SOPK : En raison de cycles irréguliers, ce calendrier se base sur ta date d'ovulation (conception) ou sur la datation de ton échographie pour calculer ton terme exact.")
-        
+        poids_config = load_json("config_grossesse.json")
         methode_calcul = st.radio("Méthode :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
         if methode_calcul == "Entrer ma date d'ovulation / conception":
             ovul_defaut = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
@@ -314,20 +314,7 @@ with tab2:
             st.success("🎉 Calendrier recalculé avec succès !")
             redemarrer()
             
-              st.write("### 📢 L'évolution de bébé cette semaine")
-            if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
-            elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
-            elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
-            elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
-            elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
-            elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
-            elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
-            elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
-            else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
-      
         date_debut_sa = date_ovul - timedelta(days=14)
-        jours_totaux_sa = (date.today() - date_debut_sa).days     
-          date_debut_sa = date_ovul - timedelta(days=14)
         jours_totaux_sa = (date.today() - date_debut_sa).days
         
         if 0 <= jours_totaux_sa <= 287:
@@ -347,9 +334,27 @@ with tab2:
             st.info(f"✨ Stade de ta grossesse : **{sa_semaines} SA + {sa_jours} jours** — Vous êtes dans ton **{mois_txt}**.")
             st.caption(f"⏳ Conception : {date_ovul.strftime('%d/%m/%Y')} | Terme officiel : {date_terme.strftime('%d/%m/%Y')} (J-{(date_terme - date.today()).days}).")
 
+            # --- BLOC ÉVOLUTION DE BÉBÉ PLACÉ TOUT EN HAUT COMMENT DEMANDÉ ---
+            st.write("### 📢 L'évolution de bébé cette semaine")
+            if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
+            elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
+            elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
+            elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
+            elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
+            elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
+            elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
+            elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
+            else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
+
+            # --- BLOC BEBE SECRET ---
+            st.write("### 👶 Informations Secrètes sur Bébé(s)")
+            genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
+            poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
+            poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
+
             # --- VIGILANCE GROSSESSE À RISQUE ---
             st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
-            grossesse_risque = st.checkbox("⚠️ Activer le protocole de suivi : Grossesse à risque obstétrical ou métabolique", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
+            grossesse_risque = st.checkbox("⚠️ Activer le protocole de suivi : Grossesse à risque obstrétical ou métabolique", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
             
             if grossesse_risque:
                 st.warning("🛑 **Protocole Vigilance Activé : Spécial SOPK & Résistance à l'insuline.** Ce guide médical vous accompagne pas à pas.")
