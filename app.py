@@ -6,21 +6,7 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- ÉCRAN DE SÉCURITÉ SIMPLE ET SANS BUG ---
-if "authentifie" not in st.session_state:
-    st.session_state["authentifie"] = False
-
-if not st.session_state["authentifie"]:
-    st.title("🔒 Accès Privé - Mon Suivi Therapy")
-    mot_de_passe = st.text_input("Entre ton mot de passe personnel pour ouvrir ton carnet :", type="password")
-    
-    if st.button("🔓 Ouvrir mon application"):
-        if mot_de_passe == "2605" or st.query_params.get("user") == "therapy":
-            st.session_state["authentifie"] = True
-            st.rerun()
-        else:
-            st.error("❌ Mot de passe incorrect. Accès refusé.")
-    st.stop()
+# --- ENTRÉE DIRECTE SANS CODE ---
 
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
