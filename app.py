@@ -6,26 +6,9 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- SYSTÈME DE SÉCURITÉ PAR MÉMOIRE PHYSIQUE IPHONE (LOCALSTORAGE) ---
-import streamlit.components.v1 as components
-
+# --- SYSTÈME DE SÉCURITÉ OFFICIEL PAR MOT DE PASSE (SANS BUG DE COOKIES) ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
-
-# Code invisible qui demande à l'iPhone s'il a déjà validé le code secret
-js_recuperation = """
-<script>
-    const token = localStorage.getItem("therapy_auth_token_secret");
-    if (token === "active_2605") {
-        parent.window.location.hash = "auth_ok";
-    }
-</script>
-"""
-components.html(js_recuperation, height=0, width=0)
-
-# Synchronisation avec le navigateur
-if st.context.headers.get("Referer") and "#auth_ok" in st.context.headers.get("Referer"):
-    st.session_state["authentifie"] = True
 
 if not st.session_state["authentifie"]:
     st.title("🔒 Accès Privé - Mon Suivi Therapy")
@@ -34,23 +17,12 @@ if not st.session_state["authentifie"]:
     if st.button("🔓 Ouvrir mon application"):
         if mot_de_passe == "2605":
             st.session_state["authentifie"] = True
-            
-            # Injection de la clé dans la mémoire physique de l'iPhone pour 10 ans !
-            js_enregistrement = """
-            <script>
-                localStorage.setItem("therapy_auth_token_secret", "active_2605");
-            </script>
-            """
-            components.html(js_enregistrement, height=0, width=0)
-            st.success("🎉 Appareil mémorisé avec succès !")
             st.rerun()
         else:
             st.error("❌ Mot de passe incorrect. Accès refusé.")
     st.stop()
 
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
-
-
 MEDS_FILE = "medicaments.json"
 HISTORY_FILE = "historique.json"
 CYCLE_FILE = "cycle_temperature.json"
