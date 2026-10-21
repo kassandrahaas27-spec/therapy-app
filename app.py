@@ -374,12 +374,36 @@ with tab2:
             poids_config["doc_lcc"] = st.text_input("Longueur Cranio-Caudale T1 (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
             poids_config["doc_poids_est"] = st.text_input("Poids estimé de bébé (en grammes) :", value=poids_config.get("doc_poids_est", ""), key="t2_poids_est")
         
-        # --- CHECKLIST VALISE ---
-        with st.expander("🍼 Checklist : Ma Valise de Maternité"):
-            poids_config["v_body"] = st.checkbox("5 ou 6 bodys en coton", value=poids_config.get("v_body", False), key="v1")
-            poids_config["v_pyj"] = st.checkbox("6 pyjamas / dors-bien chauds", value=poids_config.get("v_pyj", False), key="v2")
-            poids_config["v_adm"] = st.checkbox("Dossier médical complet (Carte vitale, échos)", value=poids_config.get("v_adm", False), key="v6")
-        
+        # --- CHECKLIST COMPLETISSIME VALISE MATERNITÉ ---
+        with st.expander("🍼 Checklist : La Valise de Maternité Complète (Maman, Bébé & Papa)"):
+            st.write("**👶 POUR BÉBÉ :**")
+            poids_config["v_body"] = st.checkbox("6 bodys en coton (ouverture croisée sur le devant)", value=poids_config.get("v_body", False), key="v1")
+            poids_config["v_pyj"] = st.checkbox("6 pyjamas en velours chauds (dors-bien)", value=poids_config.get("v_pyj", False), key="v2")
+            poids_config["v_brass"] = st.checkbox("3 brassières ou gilets en laine", value=poids_config.get("v_brass", False), key="v_b1")
+            poids_config["v_chauss"] = st.checkbox("4 paires de chaussettes + 1 paire de chaussons", value=poids_config.get("v_chauss", False), key="v_c1")
+            poids_config["v_bonnet"] = st.checkbox("2 bonnets de naissance en coton / laine", value=poids_config.get("v_bonnet", False), key="v5")
+            poids_config["v_turb"] = st.checkbox("2 gigoteuses / turbulettes (taille 0-6 mois)", value=poids_config.get("v_turb", False), key="v4")
+            poids_config["v_lange"] = st.checkbox("5 langes en tissu (indispensables pour les rejets)", value=poids_config.get("v_lange", False), key="v_l1")
+            poids_config["v_sortie"] = st.checkbox("1 nid d'ange ou couverture chaude pour la sortie", value=poids_config.get("v_sortie", False), key="v_s1")
+            
+            st.write("---")
+            st.write("**🤰 POUR MAMAN :**")
+            poids_config["v_adm"] = st.checkbox("Dossier médical complet (Carte vitale, carte groupe sanguin, échos, bilans)", value=poids_config.get("v_adm", False), key="v6")
+            poids_config["v_confort"] = st.checkbox("3 ou 4 tenues très amples, pyjamas confortables et vêtements de nuit", value=poids_config.get("v_confort", False), key="v7")
+            poids_config["v_chaussons"] = st.checkbox("1 paire de claquettes ou chaussons faciles à enfiler", value=poids_config.get("v_chaussons", False), key="v_ch2")
+            poids_config["v_hyg"] = st.checkbox("Trousse de toilette complète + serviettes hygiéniques de maternité (nuit/maxi)", value=poids_config.get("v_hyg", False), key="v8")
+            poids_config["v_slip"] = st.checkbox("5 slips jetables en filet ou culottes en coton jetables", value=poids_config.get("v_slip", False), key="v_sl2")
+            poids_config["v_allait"] = st.checkbox("Si allaitement : 2 soutiens-gorge d'allaitement + coussinets + crème lanoline", value=poids_config.get("v_allait", False), key="v_al2")
+            poids_config["v_brume"] = st.checkbox("1 brumisateur d'eau thermale (magique pour la salle de naissance)", value=poids_config.get("v_brume", False), key="v_br2")
+            
+            st.write("---")
+            st.write("**🧔 POUR LE PAPA (Ou l'accompagnant) :**")
+            poids_config["v_monnaie"] = st.checkbox("De la monnaie ou carte bancaire (pour la machine à café de la maternité)", value=poids_config.get("v_monnaie", False), key="v_m3")
+            poids_config["v_snack"] = st.checkbox("Snacks, barres de céréales, gâteaux et boissons (le travail peut être long)", value=poids_config.get("v_snack", False), key="v_sn3")
+            poids_config["v_chargeur"] = st.checkbox("Chargeurs de téléphone portables (avec un câble long si possible)", value=poids_config.get("v_chargeur", False), key="v_ch3")
+            poids_config["v_rechange"] = st.checkbox("1 ou 2 t-shirts de rechange et une petite trousse de toilette de secours", value=poids_config.get("v_rechange", False), key="v_re3")
+            poids_config["v_occu"] = st.checkbox("Lecture, écouteurs ou de quoi s'occuper pendant les heures d'attente", value=poids_config.get("v_occu", False), key="v_oc3")
+       
         # --- VIGILANCE GROSSESSE À RISQUE ---
         st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
         grossesse_risque = st.checkbox("⚠️ Activer le suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
