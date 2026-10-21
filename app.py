@@ -315,9 +315,8 @@ with tab2:
             redemarrer()
             
         date_debut_sa = date_ovul - timedelta(days=14)
-        jours_totaux_sa = (date.today() - date_debut_sa).days
-        
-    else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")        
+        jours_totaux_sa = (date.today() - date_debut_sa).days     
+    else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")   
         
         if 0 <= jours_totaux_sa <= 287:
             sa_semaines = jours_totaux_sa // 7
