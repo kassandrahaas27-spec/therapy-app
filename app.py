@@ -243,7 +243,6 @@ with tab1:
             st.success("🎉 Enregistré dans ton cloud Supabase !")
             redemarrer()
 # --- TAB 2 : MON SUIVI FÉMININ ---
-# --- TAB 2 : MON SUIVI FÉMININ ---
 with tab2:
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
         st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
@@ -345,17 +344,24 @@ with tab2:
         
         # --- BLOC ÉVOLUTION DE BÉBÉ TOUT EN HAUT COMMENT DEMANDÉ ---
         st.write("### 📢 L'évolution de bébé cette semaine")
-        if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
-        elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
-        elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
-        elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
-        elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
-        elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
-        elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
-        elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
-        else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
-
-        st.write(f"✨ **Stade actuel :** {sa_semaines} SA + {sa_jours} jours | Terme prévu : {date_terme.strftime('%d/%m/%Y')}")
+        if sa_semaines <= 6:
+            st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
+        elif 7 <= sa_semaines <= 10:
+            st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
+        elif 11 <= sa_semaines <= 14:
+            st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
+        elif 15 <= sa_semaines <= 19:
+            st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
+        elif 20 <= sa_semaines <= 24:
+            st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
+        elif 25 <= sa_semaines <= 28:
+            st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
+        elif 29 <= sa_semaines <= 32:
+            st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
+        elif 33 <= sa_semaines <= 36:
+            st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
+        else:
+            st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
 
         # --- BLOC BEBE SECRET ---
         st.write("### 👶 Informations Secrètes sur Bébé(s)")
