@@ -6,14 +6,25 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- SYSTÈME DE MÉMOIRE PAR COOKIES INVISIBLE ET SÉCURISÉ ---
+# --- SYSTÈME DE SÉCURITÉ PAR MÉMOIRE PHYSIQUE IPHONE (LOCALSTORAGE) ---
+import streamlit.components.v1 as components
+
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# L'application vérifie si ton iPhone a déjà le cookie de mémoire enregistré
-cookie_securise = st.context.cookies.get("session_therapy_private_token")
+# Code invisible qui demande à l'iPhone s'il a déjà validé le code secret
+js_recuperation = """
+<script>
+    const token = localStorage.getItem("therapy_auth_token_secret");
+    if (token === "active_2605") {
+        parent.window.location.hash = "auth_ok";
+    }
+</script>
+"""
+components.html(js_recuperation, height=0, width=0)
 
-if cookie_securise == "active_2605":
+# Synchronisation avec le navigateur
+if st.context.headers.get("Referer") and "#auth_ok" in st.context.headers.get("Referer"):
     st.session_state["authentifie"] = True
 
 if not st.session_state["authentifie"]:
@@ -23,8 +34,15 @@ if not st.session_state["authentifie"]:
     if st.button("🔓 Ouvrir mon application"):
         if mot_de_passe == "2605":
             st.session_state["authentifie"] = True
-            # On dépose le cookie permanent dans l'iPhone pour qu'il s'en souvienne
-            st.context.cookies["session_therapy_private_token"] = "active_2605"
+            
+            # Injection de la clé dans la mémoire physique de l'iPhone pour 10 ans !
+            js_enregistrement = """
+            <script>
+                localStorage.setItem("therapy_auth_token_secret", "active_2605");
+            </script>
+            """
+            components.html(js_enregistrement, height=0, width=0)
+            st.success("🎉 Appareil mémorisé avec succès !")
             st.rerun()
         else:
             st.error("❌ Mot de passe incorrect. Accès refusé.")
