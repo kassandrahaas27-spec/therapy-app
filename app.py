@@ -375,7 +375,7 @@ with tab2:
         poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
 
             # --- RANGE-DOCUMENTS ET COMPTE-RENDU MEDICAL ---
-            with st.expander("📁 Range-Documents : Mesures Échographies & Bilans"):
+                with st.expander("📁 Range-Documents : Mesures Échographies & Bilans"):
                 st.caption("💡 Centralise ici tes chiffres clés pour les avoir sous les yeux face au médecin :")
                 poids_config["doc_lcc"] = st.text_input("Longueur Cranio-Caudale T1 (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
                 poids_config["doc_bip"] = st.text_input("Diamètre Bi-Pariétal T2 (BIP en mm) :", value=poids_config.get("doc_bip", ""), key="t2_bip")
