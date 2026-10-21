@@ -243,6 +243,7 @@ with tab1:
             st.success("🎉 Enregistré dans ton cloud Supabase !")
             redemarrer()
 # --- TAB 2 : MON SUIVI FÉMININ ---
+# --- TAB 2 : MON SUIVI FÉMININ ---
 with tab2:
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
         st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
@@ -266,6 +267,7 @@ with tab2:
                 x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
             ).properties(width=450, height=250)
             st.altair_chart(graphique_zoome, use_container_width=False)
+            
             st.write("### 🔮 Analyse de ton Cycle & Fertilité SOPK")
             temps_list = cycle_df["Température"].tolist()
             status_list = cycle_df["Cycle Status"].tolist()
@@ -291,14 +293,11 @@ with tab2:
             else:
                 st.metric(label="Chances de conception estimées", value="10% - 15%", delta="Phase standard / d'attente")
 
-            # --- MODULE CALENDRIER PRÉDICTIF DU CYCLE ---
             st.write("#### 📅 Mon Calendrier Prédictif du Cycle")
-            # Recherche du début des dernières règles pour caler les prédictions
             regles_dates = cycle_df[cycle_df["Cycle Status"] == "🩸 Début des Règles"]["Date"].tolist()
             
             if regles_dates:
                 dernieres_regles = datetime.strptime(regles_dates[-1], "%Y-%m-%d").date()
-                # Estimation moyenne basée sur un cycle SOPK type (ex: 35 jours de moyenne ou 14 jours après ovulation)
                 if date_ovulation_reelle:
                     prochaines_regles = date_ovulation_reelle + timedelta(days=14)
                     debut_fertilite = date_ovulation_reelle - timedelta(days=4)
@@ -311,34 +310,17 @@ with tab2:
                     jour_test_grossesse = prochaines_regles
                 
                 st.markdown(f"""
-                * **🩸 Prochaines règles estimées :** autour du **{prochaines_regles.strftime('%d/%m/%Y')}** *(Prépare tes protections)*.
-                * **🥚 Prochaine fenêtre de fertilité :** du **{debut_fertilite.strftime('%d/%m/%Y')}** au **{fin_fertilite.strftime('%d/%m/%Y')}** *(Période idéale rapports)*.
-                * **🧪 Date idéale Test de Grossesse :** à partir du **{jour_test_grossesse.strftime('%d/%m/%Y')}** *(Évite les faux négatifs)*.
+                * **🩸 Prochaines règles estimées :** autour du **{prochaines_regles.strftime('%d/%m/%Y')}**.
+                * **🥚 Prochaine fenêtre de fertilité :** du **{debut_fertilite.strftime('%d/%m/%Y')}** au **{fin_fertilite.strftime('%d/%m/%Y')}**.
+                * **🧪 Date idéale Test de Grossesse :** à partir du **{jour_test_grossesse.strftime('%d/%m/%Y')}**.
                 """)
             else:
-                st.caption("💡 Ajoute un événement '🩸 Début des Règles' pour activer les prédictions de ton calendrier.")
+                st.caption("💡 Ajoute un événement '🩸 Début des Règles' pour activer les prédictions.")
 
     elif parcours_mode == "Suivi de Grossesse Évolutif":
         st.subheader("Mon Suivi de Grossesse")
         
-        ovul_defaut = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
-        date_ovul = datetime.strptime(ovul_defaut, "%Y-%m-%d").date()
-        date_debut_sa = date_ovul - timedelta(days=14)
-        jours_totaux_sa = (date.today() - date_debut_sa).days
-        sa_semaines = jours_totaux_sa // 7
-        
-        # --- BLOC ÉVOLUTION DE BÉBÉ TOUT EN HAUT ---
-        st.write("### 📢 L'évolution de bébé cette semaine")
-        if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
-        elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
-        elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
-        elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
-        elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
-        elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
-        elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
-        elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
-        else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
-
+        # CONFIGURATION DPA / OVULATION
         methode_calcul = st.radio("Méthode :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
         if methode_calcul == "Entrer ma date d'ovulation / conception":
             ovul_defaut_in = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
@@ -356,22 +338,47 @@ with tab2:
             st.success("🎉 Calendrier mis à jour !")
             redemarrer()
             
-        st.write(f"✨ **Stade actuel :** {sa_semaines} SA | Terme prévu : {date_terme.strftime('%d/%m/%Y')}")
+        date_debut_sa = date_ovul - timedelta(days=14)
+        jours_totaux_sa = (date.today() - date_debut_sa).days
+        sa_semaines = max(0, jours_totaux_sa // 7)
+        sa_jours = max(0, jours_totaux_sa % 7)
+        
+        # --- BLOC ÉVOLUTION DE BÉBÉ TOUT EN HAUT COMMENT DEMANDÉ ---
+        st.write("### 📢 L'évolution de bébé cette semaine")
+        if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
+        elif 7 <= sa_semaines <= 10: st.success("🍋 **Évolution Morphologique :** Bébé fait la taille d'une framboise. Fractionne tes assiettes contre les nausées.")
+        elif 11 <= sa_semaines <= 14: st.success("🍓 **Fin du 1er trimestre :** Les traits se précisent, l'échographie T1 approche.")
+        elif 15 <= sa_semaines <= 19: st.success("🍏 **Deuxième trimestre confortable :** Bébé grandit, poursuis ta marche active pour l'insuline.")
+        elif 20 <= sa_semaines <= 24: st.success("🍌 **Échographie Morphologique (T2) :** Bébé bouge beaucoup et commence à entendre tes sons.")
+        elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
+        elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
+        elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
+        else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
 
+        st.write(f"✨ **Stade actuel :** {sa_semaines} SA + {sa_jours} jours | Terme prévu : {date_terme.strftime('%d/%m/%Y')}")
+
+        # --- BLOC BEBE SECRET ---
         st.write("### 👶 Informations Secrètes sur Bébé(s)")
-        genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
-        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
+        genre_bebe_choix = ["Non renseigné / Winter Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
+        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Winter Surprise 🤫")), key="t2_genre_bebe_sel")
         poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
 
+        # --- RANGE-DOCUMENTS ---
         with st.expander("📁 Range-Documents : Mesures Échographies & Bilans"):
             poids_config["doc_lcc"] = st.text_input("Longueur Cranio-Caudale T1 (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
             poids_config["doc_poids_est"] = st.text_input("Poids estimé de bébé (en grammes) :", value=poids_config.get("doc_poids_est", ""), key="t2_poids_est")
         
+        # --- CHECKLIST VALISE ---
         with st.expander("🍼 Checklist : Ma Valise de Maternité"):
             poids_config["v_body"] = st.checkbox("5 ou 6 bodys en coton", value=poids_config.get("v_body", False), key="v1")
             poids_config["v_pyj"] = st.checkbox("6 pyjamas / dors-bien chauds", value=poids_config.get("v_pyj", False), key="v2")
             poids_config["v_adm"] = st.checkbox("Dossier médical complet (Carte vitale, échos)", value=poids_config.get("v_adm", False), key="v6")
         
+        # --- VIGILANCE GROSSESSE À RISQUE ---
+        st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
+        grossesse_risque = st.checkbox("⚠️ Activer le suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
+        if grossesse_risque:
+        # --- VIGILANCE GROSSESSE À RISQUE ---
         st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
         grossesse_risque = st.checkbox("⚠️ Activer le suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
         if grossesse_risque:
@@ -385,21 +392,27 @@ with tab2:
             st.success("🎉 Données cloud mémorisées !")
             redemarrer()
 
-            echo2_debut = date_debut_sa + timedelta(days=140)
-            echo2_fin = date_debut_sa + timedelta(days=174)
-            echo3_debut = date_debut_sa + timedelta(days=210)
-            echo3_fin = date_debut_sa + timedelta(days=244)
-            
-            st.markdown(f"""
-            * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation.
-            * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obligatoire)** + Déclaration CAF/CPAM.
-            * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
-            * **🩺 De 20 à 24 SA (Du {echo2_debut.strftime('%d/%m/%Y')} au {echo2_fin.strftime('%d/%m/%Y')}) :** **Échographie T2 Morphologique**.
-            * **🧪 De 24 à 28 SA (Du {(date_debut_sa + timedelta(days=168)).strftime('%d/%m/%Y')} au {(date_debut_sa + timedelta(days=196)).strftime('%d/%m/%Y')}) :** **Test du Diabète Gestationnel (HGPO)**.
-            * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
-            * **🏥 Au 8ème mois :** Consultation d'anesthésie pour la péridurale.
-            """)
-            
+        # CALENDRIER EXAMENS REPOSITIONNÉ SANS LIMITATION
+        st.write("### 📅 Mon Calendrier de Suivi Médical & Démarches")
+        echo_datation_deb = date_debut_sa + timedelta(days=49)
+        echo_datation_fin = date_debut_sa + timedelta(days=69)
+        echo1_debut = date_debut_sa + timedelta(days=77)
+        echo1_fin = date_debut_sa + timedelta(days=97)
+        echo2_debut = date_debut_sa + timedelta(days=140)
+        echo2_fin = date_debut_sa + timedelta(days=174)
+        echo3_debut = date_debut_sa + timedelta(days=210)
+        echo3_fin = date_debut_sa + timedelta(days=244)
+        
+        st.markdown(f"""
+        * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation.
+        * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obligatoire)** + Déclaration CAF/CPAM.
+        * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
+        * **🩺 De 20 à 24 SA (Du {echo2_debut.strftime('%d/%m/%Y')} au {echo2_fin.strftime('%d/%m/%Y')}) :** **Échographie T2 Morphologique**.
+        * **🧪 De 24 à 28 SA (Du {(date_debut_sa + timedelta(days=168)).strftime('%d/%m/%Y')} au {(date_debut_sa + timedelta(days=196)).strftime('%d/%m/%Y')}) :** **Test du Diabète Gestationnel (HGPO)**.
+        * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
+        * **🏥 Au 8ème mois :** Consultation d'anesthésie pour la péridurale.
+        """)
+
     elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
         st.subheader("Mon Carnet de Bord de Protocole PMA")
         pma_date_click = st.date_input("🗓️ Date du contrôle / injection", value=date.today(), key="t2_pma_date_click")
