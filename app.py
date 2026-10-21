@@ -295,12 +295,6 @@ with tab2:
     elif parcours_mode == "Suivi de Grossesse Évolutif":
         st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
         
-        # --- BLOC BEBE CENTRALISÉ TOUT EN HAUT SANS ERREUR D'ESPACE ---
-        st.write("### 👶 Informations Secrètes sur Bébé(s)")
-        genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
-        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
-        poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
-        
         st.info("💡 Spécial SOPK : En raison de cycles irréguliers, ce calendrier se base sur ta date d'ovulation (conception) ou sur la datation de ton échographie pour calculer ton terme exact.")
         
         methode_calcul = st.radio("Méthode :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
@@ -322,6 +316,8 @@ with tab2:
             
         date_debut_sa = date_ovul - timedelta(days=14)
         jours_totaux_sa = (date.today() - date_debut_sa).days
+        
+    else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")        
         
         if 0 <= jours_totaux_sa <= 287:
             sa_semaines = jours_totaux_sa // 7
@@ -402,7 +398,12 @@ with tab2:
             elif 25 <= sa_semaines <= 28: st.success("🥕 **Vigilance métabolique :** C'est la période du test HGPO. Reste rigoureuse sur l'eau pure.")
             elif 29 <= sa_semaines <= 32: st.success("🥥 **Échographie T3 en approche :** Bébé s'arrondit. Mange en plus petites quantités pour éviter les reflux.")
             elif 33 <= sa_semaines <= 36: st.success("🍍 **Préparation :** Bébé commence à se retourner tête en bas. Prépare ta valise de maternité.")
-            else: st.success("🍉 **Mois du terme :** Bébé est prêt à naître à tout moment. Repose-toi au maximum.")
+                
+        # --- BLOC BEBE CENTRALISÉ TOUT EN HAUT SANS ERREUR D'ESPACE ---
+        st.write("### 👶 Informations Secrètes sur Bébé(s)")
+        genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
+        poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
+        poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
 
     elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
         st.subheader("Mon Carnet de Bord de Protocole PMA")
