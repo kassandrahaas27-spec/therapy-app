@@ -385,17 +385,12 @@ with tab2:
             st.success("🎉 Données cloud mémorisées !")
             redemarrer()
 
-        st.write("### 📅 Mon Calendrier de Suivi Médical & Démarches")
-        echo_datation_deb = date_debut_sa + timedelta(days=49)
-        echo_datation_fin = date_debut_sa + timedelta(days=69)
-        echo1_debut = date_debut_sa + timedelta(days=77)
-        echo1_fin = date_debut_sa + timedelta(days=97)
-        echo2_debut = date_debut_sa + timedelta(days=140)
-        echo2_fin = date_debut_sa + timedelta(days=174)
-        echo3_debut = date_debut_sa + timedelta(days=210)
-        echo3_fin = date_debut_sa + timedelta(days=244)
-        
-         st.markdown(f"""
+            echo2_debut = date_debut_sa + timedelta(days=140)
+            echo2_fin = date_debut_sa + timedelta(days=174)
+            echo3_debut = date_debut_sa + timedelta(days=210)
+            echo3_fin = date_debut_sa + timedelta(days=244)
+            
+            st.markdown(f"""
             * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation.
             * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obligatoire)** + Déclaration CAF/CPAM.
             * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
@@ -404,7 +399,7 @@ with tab2:
             * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
             * **🏥 Au 8ème mois :** Consultation d'anesthésie pour la péridurale.
             """)
-
+            
     elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
         st.subheader("Mon Carnet de Bord de Protocole PMA")
         pma_date_click = st.date_input("🗓️ Date du contrôle / injection", value=date.today(), key="t2_pma_date_click")
