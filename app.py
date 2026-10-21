@@ -301,7 +301,7 @@ with tab2:
                 st.metric(label="Chances de conception estimées", value="10% - 15%", delta="Phase standard / d'attente")
 
     elif parcours_mode == "Suivi de Grossesse Évolutif":
-st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
+        st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
         st.info("💡 Spécial SOPK : En raison de cycles irréguliers, ce calendrier se base sur ta date d'ovulation (conception) ou sur la datation de ton échographie pour calculer ton terme exact.")
         
         poids_config = load_json("config_grossesse.json")
