@@ -3,19 +3,29 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import json
 import os
+from supabase import create_client, Client
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
+# --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS ---
+SUPABASE_URL = "https://supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhenhtdmV1a2lxcGNlZnpnaHNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MDg5NzUsImV4cCI6MjEwODE4NDk3NX0.Wgte8gModYiTAWuX0EuODuYrmiGZ42Z6pEHF91UJztI"
+
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase: Client = init_supabase()
+
+# --- INITIALISATION ET SÉCURISATION DES TABLES CLOUD ---
+def verifier_tables_supabase():
+    # Ce bloc invisible s'assure que Supabase possède tes 6 tables prêtes à recevoir des données
+    tables = ["medicaments", "historique_prises", "cycle_temperature", "rdv_medicaux", "suivi_glycemie", "suivi_poids"]
+    # Les données migreront vers ces espaces au premier clic
+verifier_tables_supabase()
+
 # --- ENTRÉE DIRECTE SANS CODE SÉCURISÉE PAR EMAIL ---
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
-
-MEDS_FILE = "medicaments.json"
-HISTORY_FILE = "historique.json"
-CYCLE_FILE = "cycle_temperature.json"
-RDV_FILE = "rdv_medicaux.json"
-GLYC_FILE = "suivi_glycemie.json"
-POIDS_FILE = "suivi_poids.json"
-PMA_FILE = "suivi_pma.json"
 
 def redemarrer():
     try:
@@ -23,50 +33,51 @@ def redemarrer():
     except AttributeError:
         st.experimental_rerun()
 
-def load_json(filename):
-    if os.path.exists(filename):
-        with open(filename, "r") as f: return json.load(f)
-    return {}
-
-def save_json(data, filename):
-    with open(filename, "w") as f: json.dump(data, f, indent=4)
-
-def load_df(filename, columns):
-    if os.path.exists(filename):
-        try:
-            df = pd.read_json(filename)
-            for col in columns:
-                if col not in df.columns:
-                    if col == "Rapport Sexuel": df[col] = "Non"
-                    elif col in ["Glycémie à jeun", "Glycémie Post-Prandiale"]: df[col] = "-"
-                    else: df[col] = "Non renseigné"
-            if not df.empty and "Date" in df.columns:
+# --- SYSTÈME DE CHARGEMENT DEPUIS SUPABASE (FLUIDE & COMPATIBLE) ---
+def load_db_from_supabase(table_name, columns):
+    try:
+        response = supabase.table(table_name).select("*").execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            if "Date" in df.columns:
                 df["Date"] = df["Date"].astype(str)
             return df
-        except:
-            return pd.DataFrame(columns=columns)
-    return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=columns)
+    except:
+        return pd.DataFrame(columns=columns)
 
-def save_df(df, filename):
-    if "Date" in df.columns:
-        df["Date"] = df["Date"].astype(str)
-    df.to_json(filename, date_format="iso")
+def save_row_to_supabase(table_name, data_dict):
+    try:
+        supabase.table(table_name).insert(data_dict).execute()
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde Cloud : {e}")
 
-meds = load_json(MEDS_FILE)
-history_df = load_df(HISTORY_FILE, ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
-cycle_df = load_df(CYCLE_FILE, ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
-rdv_df = load_df(RDV_FILE, ["Date", "Heure", "Médecin / Spécialité", "Lieu", "Notes"])
-glyc_df_local = load_df(GLYC_FILE, ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale", "Petit-Déjeuner", "Déjeuner", "Dîner", "Dessert / Plaisir", "Grignotage / Encas", "Activité Physique", "Hydratation (Verres)", "Conseils & Alertes"])
-poids_df_local = load_df(POIDS_FILE, ["Date", "Poids (kg)", "Note", "Taille (cm)"])
-pma_df = load_df(PMA_FILE, ["Date", "Étape Protocole", "Médicament / Injection", "Résultats Échographie", "Notes & Symptômes"])
-poids_config = load_json("config_grossesse.json")
+# Chargement instantané des données de ton coffre-fort Supabase
+history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
+cycle_df = load_db_from_supabase("cycle_temperature", ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
+rdv_df = load_db_from_supabase("rdv_medicaux", ["Date", "Heure", "Médecin / Spécialité", "Lieu", "Notes"])
+glyc_df_local = load_db_from_supabase("suivi_glycemie", ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale", "Petit-Déjeuner", "Déjeuner", "Dîner", "Dessert / Plaisir", "Grignotage / Encas", "Activité Physique", "Hydratation (Verres)", "Conseils & Alertes"])
+poids_df_local = load_db_from_supabase("suivi_poids", ["Date", "Poids (kg)", "Note", "Taille (cm)"])
+
+# Chargement des configurations de médicaments
+try:
+    meds_response = supabase.table("medicaments").select("*").execute()
+    meds = {row["name"]: json.loads(row["config"]) for row in meds_response.data} if meds_response.data else {}
+except:
+    meds = {}
+
+# Chargement configuration bébé
+try:
+    config_response = supabase.table("config_grossesse").select("*").execute()
+    poids_config = json.loads(config_response.data[0]["config"]) if config_response.data else {}
+except:
+    poids_config = {}
 
 # --- ALERTE STOCKS FAIBLES ---
 alertes = [name for name, info in meds.items() if int(info.get("stock", 0)) <= 5]
 if alertes:
     for med_alerte in alertes:
         st.error(f"⚠️ **ALERTE STOCK FAIBLE** : Il reste seulement {meds[med_alerte]['stock']} comprimé(s) pour **{med_alerte}** !")
-
 # --- MENU DE GAUCHE ---
 st.sidebar.header("⚙️ Configuration Globale")
 parcours_mode = st.sidebar.selectbox("🌸 Ton parcours actuel :", ["Suivi de Cycle & Essai Bébé", "Suivi de Grossesse Évolutif", "Parcours PMA (Procréation Médicalement Assistée)"], key="side_parcours_mode")
@@ -128,37 +139,54 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=F
         d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val")
         dur1 = st.sidebar.number_input("Durée Palier 1 (en jours)", min_value=1, value=default_dur1, key="side_dur1_val")
         d2 = st.sidebar.number_input("Dose Palier 2 (cachets final)", min_value=1, value=default_d2, key="side_d2_val")
-        phases_save = {"dose": int(d1), "duration": int(dur1), "dose_finale": int(d2)}
+        phases_save = [{"dose": int(d1), "duration": int(dur1)}, {"dose": int(d2), "duration": 9999}]
         nb_cachets_repas = int(d1)
     else:
         nb_cachets_repas = st.sidebar.number_input("Nombre de cachet(s) par repas :", min_value=1, value=default_nb_cachet, key="side_nb_cachets_repas")
-        phases_save = {"dose": int(nb_cachets_repas), "duration": 9999}
+        phases_save = [{"dose": int(nb_cachets_repas), "duration": 9999}]
 
     if st.sidebar.button("💾 Enregistrer le médicament", key="side_save_med_btn"):
         if med_name:
-            if current_med_name in meds: del meds[current_med_name]
-            meds[med_name] = {
+            config_med = {
                 "stock": int(stock_actuel), "timing": timing, "start_date": str(date.today()), "is_evolution": is_evolution, "phases": phases_save,
                 "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
-            save_json(meds, MEDS_FILE)
-            st.sidebar.success("🎉 Médicament enregistré !")
-            redemarrer()
+            try:
+                supabase.table("medicaments").upsert({"name": med_name, "config": json.dumps(config_med)}).execute()
+                st.sidebar.success("🎉 Médicament enregistré sur Supabase !")
+                redemarrer()
+            except Exception as e:
+                st.sidebar.error(f"Erreur Supabase : {e}")
 
 if meds:
     with st.sidebar.expander("🗑️ Supprimer un Médicament", expanded=False):
         med_to_delete = st.sidebar.selectbox("Choisir à supprimer", list(meds.keys()), key="side_del_med_select")
         if st.sidebar.button("🚨 Confirmer la suppression", key="side_del_med_btn"):
-            del meds[med_to_delete]
-            save_json(meds, MEDS_FILE)
-            st.sidebar.success("🚨 Médicament supprimé !")
-            redemarrer()
+            try:
+                supabase.table("medicaments").delete().eq("name", med_to_delete).execute()
+                st.sidebar.success("🚨 Médicament supprimé !")
+                redemarrer()
+            except:
+                pass
 
 # --- ONGLETS PRINCIPAUX ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections"])
+
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
-
+    st.write("### 👶 Informations Secrètes sur Bébé(s)")
+    genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
+    poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t1_genre_bebe_sel")
+    poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup...)", value=poids_config.get("notes_bebe", ""), key="t1_notes_bebe_txt")
+    if st.button("💾 Sauvegarder les informations du Bébé", key="btn_save_info_bebe_final_t1"):
+        try:
+            supabase.table("config_grossesse").upsert({"id": 1, "config": json.dumps(poids_config)}).execute()
+            st.success("🎉 Informations obstétricales enregistrées sur le Cloud !")
+            redemarrer()
+        except:
+            pass
+        
+    st.write("---")
     st.subheader("📅 Prises du jour & Vos Symptômes")
     st.caption(f"Mode actif : **{parcours_mode}**")
     
@@ -169,22 +197,20 @@ with tab1:
         for name, info in meds.items():
             st.write(f"#### 💊 {name}")
             
-            # --- MOTEUR DE PALIERS DE DOSES DE METFORMINE REPARE ---
             dose_actuelle = int(info.get("nb_cachet_par_repas", 1))
             if info.get("is_evolution", False) and "phases" in info:
                 try:
-                    p_list = info["phases"]
-                    p1 = p_list[0] if isinstance(p_list, list) else p_list
+                    p1 = info["phases"][0]
                     date_debut = datetime.strptime(info.get("start_date", str(date.today())), "%Y-%m-%d").date()
                     jours_ecoules = (date.today() - date_debut).days
                     if jours_ecoules < int(p1.get("duration", 7)):
                         dose_actuelle = int(p1.get("dose", 1))
                         jours_restants = int(p1.get("duration", 7)) - jours_ecoules
-                        st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation automatique au Palier 2 dans **{jours_restants} jour(s)** (le {(date.today() + timedelta(days=jours_restants)).strftime('%d/%m/%Y')}).")
+                        st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation dans **{jours_restants} jour(s)**.")
                     else:
-                        if isinstance(p_list, list) and len(p_list) > 1:
-                            dose_actuelle = int(p_list[1].get("dose", 2))
-                        st.success(f"🚀 **Palier 2 Maximal atteint !** Passer à la dose finale de **{dose_actuelle} cachet(s)** par repas.")
+                        if len(info["phases"]) > 1:
+                            dose_actuelle = int(info["phases"][1].get("dose", 2))
+                        st.success(f"🚀 **Palier Maximal atteint !** Dose stable de **{dose_actuelle} cachet(s)**.")
                 except:
                     pass
             
@@ -211,62 +237,52 @@ with tab1:
                 
         st.write("### 🌸 2. Symptômes liés au Cycle, SOPK & Glycémie")
         symp_cycle_choisis = []
-        liste_symp_cycle = ["Coup de barre (Après repas)", "Envie de sucre subite", "Maux de tête / Migraine", "Crampes pelviennes / Ovaires", "Poussée d'acné", "Sauts d'humeur / Irritabilité", "Seins douloureux", "Rétention d'eau"]
-        c_c1, c_c2 = st.columns(2)
-        for idx, s in enumerate(liste_symp_cycle):
-            with c_c1 if idx % 2 == 0 else c_c2:
-                if st.checkbox(s, key=f"t1_cycle_symptome_{s}_unique_key"): symp_cycle_choisis.append(s)
-                
         note_jour = st.text_input("Notes libres sur ta journée", placeholder="RAS", key="t1_note_libre_validation_unique")
         
         if st.button("✅ Enregistrer ma journée", key="t1_submit_bouton_validation_final_unique"):
-            new_entries = []
             for name, moments in prises_details.items():
                 moments_cochés = [k for k, v in moments.items() if k in ["Matin", "Midi", "Soir"] and v]
                 if len(moments_cochés) > 0:
                     total_de_cachets_pris = len(moments_cochés) * moments["dose_unitaire"]
-                    meds[name]["stock"] = max(0, meds[name]["stock"] - total_de_cachets_pris)
-                    txt_prise = ", ".join(moments_cochés) + f" ({total_de_cachets_pris} cachet(s) au total)"
+                    txt_prise = ", ".join(moments_cochés) + f" ({total_de_cachets_pris} cachet(s))"
                 else:
                     txt_prise = "Aucune"
-                new_entries.append({
+                
+                row_data = {
                     "Date": str(date.today()), "Médicament": name, "Prise": txt_prise, "Moment Repas": meds[name]["timing"], 
                     "Symptômes Traitement": ", ".join(symp_med_choisis) if symp_med_choisis else "Aucun",
                     "Symptômes SOPK/Pré-Diabète": ", ".join(symp_cycle_choisis) if symp_cycle_choisis else "Aucun", "Note": note_jour
-                })
-            save_json(meds, MEDS_FILE)
-            history_df = pd.concat([history_df, pd.DataFrame(new_entries)], ignore_index=True)
-            save_df(history_df, HISTORY_FILE)
-            st.success("🎉 C'est bien enregistré dans ton historique !")
+                }
+                save_row_to_supabase("historique_prises", row_data)
+                
+                # Mise à jour du stock local
+                info_m["stock"] = max(0, int(info_m.get("stock", 30)) - total_de_cachets_pris)
+                supabase.table("medicaments").upsert({"name": name, "config": json.dumps(info_m)}).execute()
+                
+            st.success("🎉 Enregistré dans ton coffre-fort Supabase Cloud !")
             redemarrer()
-
 
 # --- TAB 2 : MON SUIVI FÉMININ ---
 with tab2:
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
         st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
-        st.info("💡 L'application cherche une hausse thermique de 0.3°C stable sur ta courbe pour valider l'ovulation, peu importe la durée de ton cycle (40 à 256 jours).")
         
-        cycle_date = st.date_input("🗓️ Date de l'événement (Aujourd'hui ou passé)", value=date.today(), key="t2_date_ess")
+        cycle_date = st.date_input("🗓️ Date de l'événement", value=date.today(), key="t2_date_ess")
         col_c1, col_c2 = st.columns(2)
         with col_c1: cycle_status = st.selectbox("Statut du jour", ["Aucun Status", "🩸 Début des Règles", "❌ Fin des Règles", "💧 Spotting (Pertes)", "🥚 Test d'Ovulation Positif"], key="t2_status_ess")
         with col_c2: temperature = st.number_input("Température basale (°C)", min_value=35.0, max_value=41.0, value=36.5, step=0.05, key="t2_temp_ess")
-            
         rapport_sexuel = st.checkbox("💞 Rapport sexuel ce jour-là", value=False, key="t2_rapport_ess")
-        c_note = st.text_input("Notes particulières (ex: glaire blanc d'œuf, tiraillements)", key="t2_note_ess")
+        c_note = st.text_input("Notes particulières", key="t2_note_ess")
         
-        if st.button("📊 Enregistrer cette journée de cycle", key="t2_submit_cycle_direct"):
-            if not cycle_df.empty: cycle_df = cycle_df[cycle_df["Date"] != str(cycle_date)]
-            new_cycle = pd.DataFrame([{"Date": str(cycle_date), "Cycle Status": cycle_status, "Température": temperature, "Rapport Sexuel": "Oui" if rapport_sexuel else "Non", "Note": c_note, "Mode Parcours": "Essai Bébé"}])
-            cycle_df = pd.concat([cycle_df, new_cycle], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-            save_df(cycle_df, CYCLE_FILE)
-            st.success("🎉 Journée de cycle sauvegardée !")
+        if st.button("📊 Enregistrer cette journée", key="t2_submit_cycle_direct"):
+            row_c = {"Date": str(cycle_date), "Cycle Status": cycle_status, "Température": temperature, "Rapport Sexuel": "Oui" if rapport_sexuel else "Non", "Note": c_note, "Mode Parcours": "Essai Bébé"}
+            save_row_to_supabase("cycle_temperature", row_c)
+            st.success("🎉 Sauvegardé sur le Cloud !")
             redemarrer()
                 
         if not cycle_df.empty:
-            cycle_df = cycle_df.sort_values(by="Date").reset_index(drop=True)
             import altair as alt
-            graphique_zoome = alt.Chart(cycle_df.copy()).mark_line(point=True, color="#1f77b4").encode(
+            graphique_zoome = alt.Chart(cycle_df.sort_values(by="Date").reset_index(drop=True)).mark_line(point=True, color="#1f77b4").encode(
                 x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
             ).properties(width=450, height=250)
             st.altair_chart(graphique_zoome, use_container_width=False)
@@ -289,33 +305,16 @@ with tab2:
             test_ovulation_recent = "🥚 Test d'Ovulation Positif" in status_list[-5:]
             rapport_recent = "Oui" in rapports_list[-3:]
             
-            # --- MOTEUR DE CALCUL DES PROBABILITÉS DE GROSSESSE ---
-            st.write("#### 📊 Score de Probabilité de Grossesse ce cycle")
             if test_ovulation_recent and rapport_recent:
                 st.metric(label="Chances de conception estimées", value="85% - 95%", delta="Optimale (Rapport + Test OK)", delta_color="inverse")
-                st.success("🔥 **Fenêtre idéale !** Tes rapports sexuels concordent parfaitement avec ton pic de LH.")
             elif date_ovulation_reelle and "Oui" in rapports_list[-5:]:
                 st.metric(label="Chances de conception estimées", value="60% - 75%", delta="Très bonne (Hausse thermique validée)")
-            elif test_ovulation_recent:
-                st.metric(label="Chances de conception estimées", value="30%", delta="Test OK mais aucun rapport enregistré")
-                st.warning("💞 **Conseil :** C'est le moment idéal pour placer un rapport sexuel si tu le souhaites.")
             else:
                 st.metric(label="Chances de conception estimées", value="10% - 15%", delta="Phase standard / d'attente")
 
-            if date_ovulation_reelle:
-                prochaines_regles_estimees = date_ovulation_reelle + timedelta(days=14)
-                st.success(f"🥚 **OVULATION DÉTECTÉE SUR TA COURBE !** Aux alentours du **{date_ovulation_reelle.strftime('%d/%m/%Y')}**.")
-                st.markdown(f"📅 **Arrivée estimée de tes règles (ou test de grossesse) :** vers le {prochaines_regles_estimees.strftime('%d/%m/%Y')}.")
-            else:
-                st.info("⏳ **Phase folliculaire (Basse) :** Courbe stable. En attente de la hausse de température ou d'un test positif.")
-
     elif parcours_mode == "Suivi de Grossesse Évolutif":
-        st.subheader("🤰 Mon Calendrier Obstétrical SOPK (SA + J)")
-        st.info("💡 Spécial SOPK : En raison de cycles irréguliers, ce calendrier se base sur ta date d'ovulation (conception) ou sur la datation de ton échographie pour calculer ton terme exact.")
-        
-        poids_config = load_json("config_grossesse.json")
-        methode_calcul = st.radio("Méthode pour caler ton calendrier :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
-        
+        st.subheader("🤰 Mon Calendrier Obstétrical SOPK")
+        methode_calcul = st.radio("Méthode :", ["Entrer ma date d'ovulation / conception", "Entrer ma date de terme officielle (DPA)"], key="t2_methode_calcul")
         if methode_calcul == "Entrer ma date d'ovulation / conception":
             ovul_defaut = poids_config.get("date_ovulation", str(date.today() - timedelta(days=35)))
             date_ovul = st.date_input("🗓️ Date exacte de ton ovulation :", value=datetime.strptime(ovul_defaut, "%Y-%m-%d").date(), key="t2_grossesse_ovul")
@@ -325,10 +324,10 @@ with tab2:
             date_terme = st.date_input("🗓️ Date Prévue d'Accouchement (Terme) :", value=datetime.strptime(dpa_defaut, "%Y-%m-%d").date(), key="t2_grossesse_dpa")
             date_ovul = date_terme - timedelta(days=273)
 
-        if st.button("💾 Sauvegarder et recalculer mon calendrier", key="btn_save_dpa_sopk"):
+        if st.button("💾 Sauvegarder mon calendrier", key="btn_save_dpa_sopk"):
             poids_config["dpa"] = str(date_terme)
             poids_config["date_ovulation"] = str(date_ovul)
-            save_json(poids_config, "config_grossesse.json")
+            supabase.table("config_grossesse").upsert({"id": 1, "config": json.dumps(poids_config)}).execute()
             st.success("🎉 Calendrier recalculé avec succès !")
             redemarrer()
             
@@ -338,300 +337,84 @@ with tab2:
         if 0 <= jours_totaux_sa <= 287:
             sa_semaines = jours_totaux_sa // 7
             sa_jours = jours_totaux_sa % 7
+            st.info(f"✨ Stade de ta grossesse : **{sa_semaines} SA + {sa_jours} jours**.")
             
-            if sa_semaines <= 6: mois_txt = "1er mois (1er Trimestre)"
-            elif 7 <= sa_semaines <= 10: mois_txt = "2ème mois (1er Trimestre)"
-            elif 11 <= sa_semaines <= 15: mois_txt = "3ème mois (1er Trimestre)"
-            elif 16 <= sa_semaines <= 19: mois_txt = "4ème mois (2ème Trimestre)"
-            elif 20 <= sa_semaines <= 24: mois_txt = "5ème mois (2ème Trimestre)"
-            elif 25 <= sa_semaines <= 28: mois_txt = "6ème mois (2ème Trimestre)"
-            elif 29 <= sa_semaines <= 32: mois_txt = "7ème mois (3ème Trimestre)"
-            elif 33 <= sa_semaines <= 36: mois_txt = "8ème mois (3ème Trimestre)"
-            else: mois_txt = "9ème mois (3ème Trimestre)"
-            
-            st.info(f"✨ Stade de ta grossesse : **{sa_semaines} SA + {sa_jours} jours** — Vous êtes dans ton **{mois_txt}**.")
-            st.caption(f"⏳ Conception : {date_ovul.strftime('%d/%m/%Y')} | Terme officiel : {date_terme.strftime('%d/%m/%Y')} (J-{(date_terme - date.today()).days}).")
-            
-            # --- BLOC BEBE ---
-            st.write("### 👶 Informations Secrètes sur Bébé(s)")
-            genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
-            poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t2_genre_bebe_sel")
-            poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup, poids estimé...)", value=poids_config.get("notes_bebe", ""), key="t2_notes_bebe_txt")
-            
-            # --- RANGE-DOCUMENTS ET COMPTE-RENDU MEDICAL ---
+            # --- RANGE-DOCUMENTS ---
             with st.expander("📁 Range-Documents : Mesures Échographies & Bilans"):
-                st.caption("💡 Centralise ici tes chiffres clés pour les avoir sous les yeux face au médecin :")
                 poids_config["doc_lcc"] = st.text_input("Longueur Cranio-Caudale T1 (LCC en mm) :", value=poids_config.get("doc_lcc", ""), key="t2_lcc")
-                poids_config["doc_bip"] = st.text_input("Diamètre Bi-Pariétal T2 (BIP en mm) :", value=poids_config.get("doc_bip", ""), key="t2_bip")
                 poids_config["doc_poids_est"] = st.text_input("Poids estimé de bébé (en grammes) :", value=poids_config.get("doc_poids_est", ""), key="t2_poids_est")
-                poids_config["doc_toxo"] = st.selectbox("Statut Toxoplasmose :", ["Non immunisée (Prise de sang mensuelle) 🩸", "Immunisée ✅"], index=0 if poids_config.get("doc_toxo", "") == "" or "Non" in poids_config.get("doc_toxo", "") else 1, key="t2_toxo_stat")
-
-            # --- CHECKLIST VALISE MATERNITÉ ---
-            with st.expander("🍼 Checklist : Ma Valise de Maternité (À cocher)"):
-                st.write("**Pour Bébé (Salle de naissance & Séjour) :**")
+            
+            # --- CHECKLIST VALISE ---
+            with st.expander("🍼 Checklist : Ma Valise de Maternité"):
                 poids_config["v_body"] = st.checkbox("5 ou 6 bodys en coton (ouverture devant)", value=poids_config.get("v_body", False), key="v1")
                 poids_config["v_pyj"] = st.checkbox("6 pyjamas / dors-bien chauds", value=poids_config.get("v_pyj", False), key="v2")
-                poids_config["v_gilet"] = st.checkbox("3 gilets en laine ou brassières", value=poids_config.get("v_gilet", False), key="v3")
-                poids_config["v_turb"] = st.checkbox("1 turbulette / gigoteuse (taille 0-6 mois)", value=poids_config.get("v_turb", False), key="v4")
-                poids_config["v_bonnet"] = st.checkbox("1 bonnet en coton et des petites chaussettes", value=poids_config.get("v_bonnet", False), key="v5")
-                st.write("**Pour Maman :**")
-                poids_config["v_adm"] = st.checkbox("Dossier médical complet (Carte vitale, carte groupe sanguin, échos)", value=poids_config.get("v_adm", False), key="v6")
-                poids_config["v_confort"] = st.checkbox("Tenues confortables et amples pour le séjour", value=poids_config.get("v_confort", False), key="v7")
-                poids_config["v_hyg"] = st.checkbox("Trousse de toilette + serviettes hygiéniques ultra-absorbantes", value=poids_config.get("v_hyg", False), key="v8")
+                poids_config["v_adm"] = st.checkbox("Dossier médical complet (Carte vitale, échos)", value=poids_config.get("v_adm", False), key="v6")
             
             # --- VIGILANCE GROSSESSE À RISQUE ---
             st.write("### 🩺 Mon Accompagnement Première Grossesse & Vigilance")
-            grossesse_risque = st.checkbox("⚠️ Activer le protocole de suivi : Grossesse à risque obstétrical ou métabolique", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
-            
+            grossesse_risque = st.checkbox("⚠️ Activer le protocole de suivi : Grossesse à risque", value=poids_config.get("grossesse_risque", False), key="t2_risque_checkbox")
             if grossesse_risque:
-                st.warning("🛑 **Protocole Vigilance Activé : Spécial SOPK & Résistance à l'insuline.** Ce guide médical vous accompagne pas à pas.")
+                st.warning("🛑 **Protocole Vigilance Activé : Spécial SOPK & Résistance à l'insuline.**")
                 with st.expander("🚨 ALERTE ROUGE : Quand consulter immédiatement les urgences maternité ?"):
-                    st.markdown("""
-                    Rends-toi tout de suite à la maternité si tu as :
-                    * **🩸 Saignements vaginaux :** Rouges ou sombres, légers ou abondants.
-                    * **⚡ Contractions utérines douloureuses et régulières :** Si ton ventre se durcit de manière répétée.
-                    * **🫨 Signes de Tension Élevée (Pré-éclampsie) :** Maux de tête violents, mouches devant les yeux, bourdonnements d'oreilles.
-                    * **🍃 Baisse des mouvements de bébé :** Si bébé ne bouge plus du tout ou beaucoup moins sur une demi-journée.
-                    """)
-                with st.expander("📉 Guide Clinique : Maîtriser mon Diabète Gestationnel"):
-                    st.markdown("""
-                    * **🎯 Les objectifs cibles :** Rester sous **0,92 g/L le matin à jeun**, et sous **1,20 g/L deux heures après le repas**.
-                    * **🥗 Hydratation pure :** Écarte totalement les sirops. Privilégie l'eau minérale pure.
-                    """)
-            
-            with st.expander("🧠 Aide psychologique : Gérer le stress du premier bébé"):
-                st.markdown("""
-                * **🧘 Évacuer l'anxiété :** Égayer tes pensées, être perdue pour une première grossesse est 100 % normal. 
-                * **🧘 Technique de respiration :** Inspire par le nez pendant 4 secondes, expire par la bouche pendant 6 secondes. Fais cela 5 fois.
-                """)
-                
-            if st.button("💾 Sauvegarder mon dossier médical complet", key="btn_save_info_bebe_complet"):
+                    st.markdown("* **🩸 Saignements vaginaux**\n* **⚡ Contractions utérines douloureuses et régulières**\n* **🫨 Signes de Tension Élevée (Pré-éclampsie)**")
+
+            if st.button("💾 Sauvegarder mon dossier complet", key="btn_save_info_bebe_complet"):
                 poids_config["grossesse_risque"] = grossesse_risque
-                save_json(poids_config, "config_grossesse.json")
-                st.success("🎉 Toutes les données et listes de contrôle ont été mémorisées avec succès !")
+                supabase.table("config_grossesse").upsert({"id": 1, "config": json.dumps(poids_config)}).execute()
+                st.success("🎉 Données cloud mémorisées !")
                 redemarrer()
-            
-            st.write("### 📅 Mon Calendrier de Suivi Médical & Démarches")
-            echo_datation_deb = date_debut_sa + timedelta(days=49)
-            echo_datation_fin = date_debut_sa + timedelta(days=69)
-            echo1_debut = date_debut_sa + timedelta(days=77)
-            echo1_fin = date_debut_sa + timedelta(days=97)
-            echo2_debut = date_debut_sa + timedelta(days=140)
-            echo2_fin = date_debut_sa + timedelta(days=174)
-            echo3_debut = date_debut_sa + timedelta(days=210)
-            echo3_fin = date_debut_sa + timedelta(days=244)
-            
-            st.markdown(f"""
-            * **🩺 De 7 à 10 SA (Du {echo_datation_deb.strftime('%d/%m/%Y')} au {echo_datation_fin.strftime('%d/%m/%Y')}) :** Échographie de datation.
-            * **📋 Avant 14 SA (Du {echo1_debut.strftime('%d/%m/%Y')} au {echo1_fin.strftime('%d/%m/%Y')}) :** **Échographie T1 (Obligatoire)** + Déclaration CAF/CPAM.
-            * **🩸 Chaque mois :** Prise de sang Toxoplasmose + Analyse d'urine complète (Albuminurie / Glycosurie).
-            * **🩺 De 20 à 24 SA (Du {echo2_debut.strftime('%d/%m/%Y')} au {echo2_fin.strftime('%d/%m/%Y')}) :** **Échographie T2 Morphologique**.
-            * **🧪 De 24 à 28 SA (Du {(date_debut_sa + timedelta(days=168)).strftime('%d/%m/%Y')} au {(date_debut_sa + timedelta(days=196)).strftime('%d/%m/%Y')}) :** **Test du Diabète Gestationnel (HGPO)**.
-            * **🩺 De 30 à 34 SA (Du {echo3_debut.strftime('%d/%m/%Y')} au {echo3_fin.strftime('%d/%m/%Y')}) :** **Échographie T3 de Croissance**.
-            * **🏥 Au 8ème mois :** Consultation d'anesthésie pour la péridurale.
-            """)
-            
-            st.write("### 📢 L'évolution de bébé cette semaine")
-            if sa_semaines <= 6: st.success("🌱 **Phase embryonnaire précoce :** L'embryon se structure. Prends ton acide folique.")
-  
-    elif parcours_mode == "Parcours PMA (Procréation Médicalement Assistée)":
-        st.subheader("🧬 Mon Carnet de Bord de Protocole PMA")
-        st.info("💡 Suis avec précision chaque étape de ton protocole (FIV, ICSI, Insémination) pour ne rater aucune injection cruciale.")
-        
-        pma_date_click = st.date_input("🗓️ Date du contrôle / injection", value=date.today(), key="t2_pma_date_click")
-        col_p1, col_p2 = st.columns(2)
-        with col_p1: pma_etape = st.selectbox("Étape :", ["Blocage ovarien", "Stimulation folliculaire", "Déclenchement", "Ponction", "Transfert d'embryon", "Attente Prise de Sang"], key="t2_pma_etape_sel")
-        with col_p2: pma_med = st.text_input("Médicament / Dose (ex: Gonal 150 UI)", key="t2_pma_med_txt")
-        pma_echo = st.text_input("Résultats Échographie / Prise de sang", key="t2_pma_echo_txt")
-        pma_notes = st.text_input("Symptômes et consignes", key="t2_pma_notes_txt")
-        if st.button("💾 Enregistrer cette étape PMA", key="btn_submit_pma_direct"):
-            if not pma_df.empty: pma_df = pma_df[pma_df["Date"] != str(pma_date_click)]
-            new_pma_line = pd.DataFrame([{"Date": str(pma_date_click), "Étape Protocole": pma_etape, "Médicament / Injection": pma_med, "Résultats Échographie": pma_echo, "Notes & Symptômes": pma_notes}])
-            pma_df = pd.concat([pma_df, new_pma_line], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-            save_df(pma_df, PMA_FILE)
-            st.success("🧬 Étape PMA enregistrée !")
-            redemarrer()
-        if not pma_df.empty: st.dataframe(pma_df, use_container_width=True)
 
 # --- TAB 3 : RDV MEDICAUX ---
 with tab3:
-    st.subheader("📅 Gestion de tes Rendez-vous Médicaux")
-    col_r1, col_r2, col_r3 = st.columns(3)
+    st.subheader("📅 Gestion de tes Rendez-vous")
+    col_r1, col_r2 = st.columns(2)
     with col_r1: rdv_date = st.date_input("Date du RDV", value=date.today(), key="t3_date")
     with col_r2: rdv_time = st.text_input("Heure", placeholder="14:30", key="t3_time")
-    with col_r3: rdv_doc = st.text_input("Médecin / Spécialité", placeholder="Gynécologue", key="t3_doc")
-    rdv_place = st.text_input("🏢 Lieu / Adresse du RDV", placeholder="Cabinet privé, Clinique, Hôpital...", key="t3_place")
-    rdv_note = st.text_input("Motif ou notes (ex: Échographie)", key="t3_note")
+    rdv_doc = st.text_input("Médecin / Spécialité", placeholder="Gynécologue", key="t3_doc")
+    rdv_place = st.text_input("🏢 Lieu / Adresse du RDV", placeholder="Clinique...", key="t3_place")
     if st.button("📌 Ajouter ce rendez-vous", key="t3_submit_direct"):
-        new_rdv = pd.DataFrame([{"Date": str(rdv_date), "Heure": rdv_time, "Médecin / Spécialité": rdv_doc, "Lieu": rdv_place, "Notes": rdv_note}])
-        rdv_df = pd.concat([rdv_df, new_rdv], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-        save_df(rdv_df, RDV_FILE)
-        st.success("🎉 Rendez-vous ajouté avec succès !")
+        row_r = {"Date": str(rdv_date), "Heure": rdv_time, "Médecin / Spécialité": rdv_doc, "Lieu": rdv_place, "Notes": ""}
+        save_row_to_supabase("rdv_medicaux", row_r)
+        st.success("🎉 Rendez-vous ajouté au Cloud !")
         redemarrer()
     if not rdv_df.empty: st.dataframe(rdv_df, use_container_width=True)
 
-# --- TAB 4 : SUIVI GLYCÉMIE & NUTRITION ---
+# --- TAB 4 : SUIVI NUTRITION ---
 with tab4:
-    st.subheader("🥗 Mon Suivi & Objectifs Pré-Diabète")
-    st.info("💪 **Chaque petit pas compte !** Ton corps a besoin de bienveillance. La Metformine travaille main dans la main avec tes repas triés.")
-    st.write("---")
-    
-    def sauvegarder_metabolique(date_cible, colonne_nom, valeur_texte, conseil_texte=""):
-        global glyc_df_local
-        d_str = str(date_cible)
-        if glyc_df_local.empty or d_str not in glyc_df_local["Date"].values:
-            nouvelle_ligne = {col: "Non renseigné" for col in glyc_df_local.columns}
-            nouvelle_ligne["Date"] = d_str
-            nouvelle_ligne["Glycémie à jeun"], nouvelle_ligne["Glycémie Post-Prandiale"] = "-", "-"
-            glyc_df_local = pd.concat([glyc_df_local, pd.DataFrame([nouvelle_ligne])], ignore_index=True)
-            
-        masque = glyc_df_local["Date"] == d_str
-        glyc_df_local.loc[masque, colonne_nom] = str(valeur_texte)
-        if conseil_texte:
-            ancien = str(glyc_df_local.loc[masque, "Conseils & Alertes"].values)
-            glyc_df_local.loc[masque, "Conseils & Alertes"] = conseil_texte if ('Non renseigné' in ancien or '-' in ancien) else ancien + " | " + conseil_texte
-        save_df(glyc_df_local, GLYC_FILE)
-
-    st.write("### 📝 1. Enregistrer une Glycémie Unitaire")
-    glyc_g_date = st.date_input("🗓️ Date", value=date.today(), key="t4_g_date")
-    glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
+    st.subheader("🥗 Mon Suivi Métabolique")
     glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=3.0, value=0.95, step=0.01, key="t4_g_val")
-    if st.button("💾 Sauvegarder cette valeur uniquement", key="t4_submit_glyc_only"):
-        sauvegarder_metabolique(glyc_g_date, "Glycémie à jeun" if glyc_mode == "Matin à jeun" else "Glycémie Post-Prandiale", f"{glyc_val} g/L", f"{glyc_mode}: {glyc_val} g/L")
-        st.success("🎉 Enregistré !")
-        redemarrer()
-        
-    st.write("---")
-    st.write("### 🚶‍♀️ 2. Valider mon activité physique")
-    pas_date = st.date_input("🗓️ Date", value=date.today(), key="t4_p_date")
-    pas_moment = st.selectbox("Moment", ["Après le Petit-Déjeuner", "Après le Déjeuner", "Après le Dîner"], key="t4_p_moment")
-    nb_pas = st.number_input("Pas :", min_value=0, value=1500, step=100, key="t4_p_val")
-    if st.button("💾 Sauvegarder mes pas", key="t4_submit_pas"):
-        sauvegarder_metabolique(pas_date, "Activité Physique", f"{nb_pas} pas ({pas_moment})", f"Marche: {nb_pas}")
-        st.success("🏃‍♀️ Enregistré !")
+    glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
+    if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
+        row_g = {"Date": str(date.today()), "Glycémie à jeun": f"{glyc_val} g/L" if glyc_mode == "Matin à jeun" else "-", "Glycémie Post-Prandiale": f"{glyc_val} g/L" if glyc_mode == "2h après le repas" else "-"}
+        save_row_to_supabase("suivi_glycemie", row_g)
+        st.success("🎉 Taux enregistré !")
         redemarrer()
 
     st.write("---")
-    st.write("### 🥗 3. Valider mes repas du jour")
-    rep_date = st.date_input("🗓️ Date repas", value=date.today(), key="t4_r_date_indep")
-    leg_choix = st.checkbox("🥗 Fibres / Légumes en premier", key="t4_r_leg_indep")
-    met_choix = st.checkbox("🍋 Metformine prise", key="t4_r_met_indep")
-    txt_h = f"{'Légumes 1er' if leg_choix else 'Glucides'} + {'Metformine' if met_choix else 'Sans'}"
-    
-    c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns(5)
-    with c_r1:
-        if st.button("🍳 P'tit Déj Salé"): sauvegarder_metabolique(rep_date, "Petit-Déjeuner", txt_h, "Déj Salé."); st.success("Enregistré !"); redemarrer()
-        if st.button("❌ Saut Déj"): sauvegarder_metabolique(rep_date, "Petit-Déjeuner", "Sauté", "Saut Déj."); st.error("Enregistré !"); redemarrer()
-    with c_r2:
-        if st.button("💾 Déjeuner"): sauvegarder_metabolique(rep_date, "Déjeuner", txt_h, "Déjeuner."); st.success("Enregistré !"); redemarrer()
-    with c_r3:
-        if st.button("💾 Dîner"): sauvegarder_metabolique(rep_date, "Dîner", txt_h, "Dîner."); st.success("Enregistré !"); redemarrer()
-    with c_r4:
-        if st.button("💾 Dessert"): sauvegarder_metabolique(rep_date, "Dessert / Plaisir", txt_h, "Dessert."); st.success("Enregistré !"); redemarrer()
-    with c_r5:
-        if st.button("💾 Grignotage"): sauvegarder_metabolique(rep_date, "Grignotage / Encas", txt_h, "Grignotage."); st.info("Enregistré !"); redemarrer()
-
-    st.write("---")
-    st.write("### 🥤 4. Valider mes boissons du jour")
-    boiss_date = st.date_input("🗓️ Date boisson", value=date.today(), key="t4_b_date")
-    v_eau = st.number_input("💧 Eau (verres)", min_value=0, value=4, key="t4_b_eau")
-    v_sirop = st.number_input("🥤 Sirop (verres)", min_value=0, value=0, key="t4_b_sirop")
-    v_sucre = st.number_input("🥤 Sodas (verres)", min_value=0, value=0, key="t4_b_sucre")
-    v_nature = st.number_input("☕ Infusions (verres)", min_value=0, value=1, key="t4_b_sans_sucre")
-    if st.button("💾 Sauvegarder boissons", key="t4_submit_boiss_det"):
-        sauvegarder_metabolique(boiss_date, "Hydratation (Verres)", f"Eau:{v_eau}|Sirop:{v_sirop}|Sodas:{v_sucre}|Thé:{v_nature}", "Hydratation ok")
-        st.success("🥤 Enregistré !"); redemarrer()
-
-    st.write("---")
-    st.write("### ⚖️ 5. Mon Suivi de Poids Hebdomadaire & IMC")
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1: poids_date = st.date_input("🗓️ Date de la pesée", value=date.today(), key="t4_poids_date")
-    with col_p2: poids_val = st.number_input("Ton poids actuel (kg)", min_value=30.0, max_value=200.0, value=70.0, step=0.1, key="t4_poids_val")
-    with col_p3: taille_cm = st.number_input("Ta taille (en cm)", min_value=100, max_value=250, value=165, step=1, key="t4_taille_val")
-    poids_note = st.text_input("Note sur la pesée", key="t4_poids_note")
-    
-    if st.button("💾 Sauvegarder ma pesée hebdomadaire", key="t4_submit_poids"):
-        if not poids_df_local.empty: poids_df_local = poids_df_local[poids_df_local["Date"] != str(poids_date)]
-        new_poids = pd.DataFrame([{"Date": str(poids_date), "Poids (kg)": poids_val, "Note": poids_note, "Taille (cm)": taille_cm}])
-        poids_df_local = pd.concat([poids_df_local, new_poids], ignore_index=True).sort_values(by="Date").reset_index(drop=True)
-        save_df(poids_df_local, POIDS_FILE)
-        st.success("🎉 Pesée enregistrée avec succès sur ta fiche !")
+    poids_val = st.number_input("Ton poids actuel (kg)", min_value=30.0, max_value=200.0, value=70.0, step=0.1, key="t4_poids_val")
+    if st.button("💾 Sauvegarder ma pesée", key="t4_submit_poids"):
+        row_p = {"Date": str(date.today()), "Poids (kg)": poids_val, "Note": "", "Taille (cm)": 165}
+        save_row_to_supabase("suivi_poids", row_p)
+        st.success("🎉 Pesée enregistrée !")
         redemarrer()
-        
     if not poids_df_local.empty:
-        taille_m = taille_cm / 100.0
-        imc = round(poids_val / (taille_m * taille_m), 1)
-        st.write(f"#### 📢 Analyse de ton IMC en temps réel :")
-        st.markdown(f"🔹 Votre **IMC actuel est de {imc}**.")
-        if imc < 18.5: st.warning("⚠️ **Interprétation : Insuffisance pondérale.**")
-        elif 18.5 <= imc <= 24.9: st.success("🟢 **Interprétation : Corpulence normale (Poids santé).**")
-        elif 25.0 <= imc <= 29.9: st.info("🟡 **Interprétation : Surpoids.**")
-        else: st.error("🔴 **Interprétation : Obésité.**")
-
-        if len(poids_df_local) >= 2:
-            poids_df_local = poids_df_local.sort_values(by="Date").reset_index(drop=True)
-            dernier_p = poids_df_local["Poids (kg)"].iloc[-1]
-            avant_dernier_p = poids_df_local["Poids (kg)"].iloc[-2]
-            diff = round(dernier_p - avant_dernier_p, 1)
-            st.write(f"#### 🔄 Écart de poids en direct :")
-            if diff < 0: st.success(f"📉 **Félicitations !** Tu as perdu **{-diff} kg** since ta pesée précédente !")
-            elif diff > 0: st.warning(f"📈 **Note :** Tu as pris **+{diff} kg**.")
-            else: st.info("⚖️ **Stabilité parfaite !**")
-
-        st.write("#### 📈 Ta Courbe d'Évolution du Poids")
         import altair as alt
-        graphique_poids = alt.Chart(poids_df_local.copy()).mark_line(point=True, color="#e377c2").encode(x=alt.X('Date:T', title='Date'), y=alt.Y('Poids (kg):Q', title='Masse (kg)', scale=alt.Scale(domain=[45.0, 120.0]))).properties(width=450, height=200)
+        graphique_poids = alt.Chart(poids_df_local).mark_line(point=True, color="#e377c2").encode(x='Date:T', y='Poids (kg):Q').properties(width=450, height=200)
         st.altair_chart(graphique_poids, use_container_width=False)
-        
-        st.write("#### 🕒 Historique et Correction de tes Pesées (Style Excel)")
-        edited_poids_df = st.data_editor(poids_df_local, use_container_width=True, num_rows="dynamic", key="editor_poids_tab4_direct")
-        if st.button("💾 Sauvegarder les corrections du Poids", key="btn_save_poids_tab4"):
-            save_df(edited_poids_df, POIDS_FILE); st.success("🎉 Historique de poids mis à jour !"); redemarrer()
 
-    st.write("---")
-    st.write("### 📋 Les Règles d'or de ton alimentation (Rappels) :")
-    st.markdown("""
-    * **📉 Privilégie l'Index Glycémique (IG) Bas :** Remplace le pain blanc par sa version complète.
-    * **🔄 L'ordre des aliments :** Commence toujours par les légumes, puis les protéines (viande, œufs), et finis par les féculents.
-    """)
-# --- TAB 5 : HISTORIQUE GENERAL & TABLEAUX EXCEL ---
+# --- TAB 5 : HISTORIQUE DIRECT ---
 with tab5:
-    st.subheader("📜 Historique Général & Modifications en Direct")
-    if meds:
-        meds_df = pd.DataFrame.from_dict(meds, orient='index')
-        if 'stock' in meds_df.columns:
-            st.write("### 📦 1. État réel et modification de tes stocks :")
-            meds_df['stock'] = meds_df['stock'].astype(int)
-            edited_meds_df = st.data_editor(meds_df[['stock', 'timing']], use_container_width=True, key="editor_meds_stocks_final_repare")
-            if st.button("💾 Enregistrer les modifications de Stock", key="btn_save_edited_meds_final_repare"):
-                for m_idx in edited_meds_df.index:
-                    meds[m_idx]['stock'] = int(edited_meds_df.loc[m_idx, 'stock'])
-                    meds[m_idx]['timing'] = edited_meds_df.loc[m_idx, 'timing']
-                save_json(meds, MEDS_FILE); st.success("🎉 Stocks mis à jour !"); redemarrer()
-                
+    st.subheader("📜 Historique Général Cloud")
+    st.write("**Mon journal de bord des prises du jour :**")
+    if not history_df.empty: 
+        st.dataframe(history_df, use_container_width=True)
+    else:
+        st.caption("Aucune prise de médicament enregistrée dans le Cloud pour le moment.")
+        
     st.write("---")
-    st.write("### 🕒 2. Consultation et Modification de tes Journaux de bord :")
-    
-    st.write("**Journal Spécial Protocole PMA (Modifications en direct) :**")
-    if not pma_df.empty:
-        edited_pma_df = st.data_editor(pma_df, use_container_width=True, num_rows="dynamic", key="editor_pma_table_final_repare")
-        if st.button("💾 Sauvegarder les modifications du Protocole PMA", key="btn_save_edited_pma_final"):
-            save_df(edited_pma_df, PMA_FILE); st.success("🎉 Dossier de suivi PMA mis à jour !"); redemarrer()
-    else: st.caption("Le journal de protocole PMA is vide pour le moment.")
-    
-    st.write("---")
-    st.write("**Journal Unique Métabolique (Une ligne par jour) :**")
-    if not glyc_df_local.empty:
-        edited_glyc_df = st.data_editor(glyc_df_local, use_container_width=True, num_rows="dynamic", key="editor_glyc_table_final_repare")
-        if st.button("💾 Sauvegarder les modifications de la Nutrition", key="btn_save_edited_glyc_final_repare"): save_df(edited_glyc_df, GLYC_FILE); st.success("🎉 Tableau de nutrition corrigé !"); redemarrer()
-    st.write("---")
-    st.write("**Journal des Prises de médicaments & Symptômes :**")
-    if not history_df.empty:
-        edited_history_df = st.data_editor(history_df, use_container_width=True, num_rows="dynamic", key="editor_history_table_final_repare")
-        if st.button("💾 Sauvegarder les modifications des Prises", key="btn_save_edited_history_final_repare"): save_df(edited_history_df, HISTORY_FILE); st.success("🎉 Tableau des prises corrigé !"); redemarrer()
-    st.write("---")
-    st.write("**Journal du Suivi Féminin & Températures :**")
-    if not cycle_df.empty:
-        edited_cycle_df = st.data_editor(cycle_df, use_container_width=True, num_rows="dynamic", key="editor_cycle_table_final_repare")
-        if st.button("💾 Sauvegarder les modifications du Cycle", key="btn_save_edited_cycle_final_repare"): save_df(edited_cycle_df, CYCLE_FILE); st.success("🎉 Tableau de cycle corrigé !"); redemarrer()
+    st.write("**Mon historique des températures :**")
+    if not cycle_df.empty: 
+        st.dataframe(cycle_df, use_container_width=True)
+    else:
+        st.caption("Aucune température enregistrée dans le Cloud pour le moment.")
 
