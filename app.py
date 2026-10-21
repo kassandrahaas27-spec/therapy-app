@@ -6,7 +6,7 @@ import os
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- SYSTÈME DE SÉCURITÉ OFFICIEL PAR MOT DE PASSE (SANS BUG DE COOKIES) ---
+# --- ÉCRAN DE SÉCURITÉ SIMPLE ET SANS BUG ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
@@ -23,6 +23,7 @@ if not st.session_state["authentifie"]:
     st.stop()
 
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
+
 MEDS_FILE = "medicaments.json"
 HISTORY_FILE = "historique.json"
 CYCLE_FILE = "cycle_temperature.json"
