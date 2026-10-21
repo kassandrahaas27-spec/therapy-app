@@ -15,7 +15,7 @@ if not st.session_state["authentifie"]:
     # Tu pourras changer "MonCodeSecret2026" par le mot de passe de ton choix
     mot_de_passe = st.text_input("Entre ton mot de passe personnel pour ouvrir ton carnet :", type="password")
     if st.button("🔓 Ouvrir mon application"):
-        if mot_de_passe == "MonCodeSecret2026":
+        if mot_de_passe == "2605":
             st.session_state["authentifie"] = True
             st.rerun()
         else:
