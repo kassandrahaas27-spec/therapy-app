@@ -174,19 +174,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi 
 
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
-    st.write("### 👶 Informations Secrètes sur Bébé(s)")
-    genre_bebe_choix = ["Non renseigné / Surprise 🤫", "Fille 🌸", "Garçon 💎", "Jumeaux / Grossesse Multiple 🤰🤰"]
-    poids_config["genre_bebe"] = st.selectbox("👶 Genre du bébé :", genre_bebe_choix, index=genre_bebe_choix.index(poids_config.get("genre_bebe", "Non renseigné / Surprise 🤫")), key="t1_genre_bebe_sel")
-    poids_config["notes_bebe"] = st.text_input("📝 Notes sur les Échographies (ex: Il bouge beaucoup...)", value=poids_config.get("notes_bebe", ""), key="t1_notes_bebe_txt")
-    if st.button("💾 Sauvegarder les informations du Bébé", key="btn_save_info_bebe_final_t1"):
-        try:
-            supabase.table("config_grossesse").upsert({"id": 1, "config": json.dumps(poids_config)}).execute()
-            st.success("🎉 Informations obstétricales enregistrées sur le Cloud !")
-            redemarrer()
-        except:
-            pass
-        
-    st.write("---")
+
     st.subheader("📅 Prises du jour & Vos Symptômes")
     st.caption(f"Mode actif : **{parcours_mode}**")
     
