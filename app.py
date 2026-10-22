@@ -34,8 +34,12 @@ def load_db_from_supabase(table_name, columns):
         return pd.DataFrame(columns=columns)
 
 def save_row_to_supabase(table_name, data_dict):
-    try: supabase.table(table_name).insert(data_dict).execute()
-    except Exception as e: st.error(f"Erreur de sauvegarde Cloud : {e}")
+    try:
+        supabase.table(table_name).insert(data_dict).execute()
+        return True
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde Cloud ({table_name}) : {e}")
+        return False
 
 # Chargement sécurisé depuis Supabase
 history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
