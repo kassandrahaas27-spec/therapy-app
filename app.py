@@ -104,6 +104,8 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     p_midi = st.sidebar.checkbox("☀️ Midi", value=default_mi, key="side_p_midi")
     p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir")
     
+    date_debut_traitement = st.sidebar.date_input("📅 Date de début du traitement", value=date.today(), key="side_start_date")    
+
     is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers)", value=default_is_evo, key="side_is_evo_cb")
     if is_evolution:
         d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val")
@@ -118,8 +120,7 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     if st.sidebar.button("💾 Enregistrer le médicament", key="side_save_med_btn"):
         if med_name:
             config_med = {
-                "stock": int(stock_actuel), "timing": timing, "start_date": str(date.today()), "is_evolution": is_evolution, "phases": phases_save,
-                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "nb_cachet_par_repas": int(nb_cachets_repas)
+                "stock": int(stock_actuel), "timing": timing, "start_date": str(date_debut_traitement), "is_evolution": is_evolution, "phases": phases_save,                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
             try:
                 supabase.table("medicaments").upsert({"name": med_name, "config": config_med}).execute()
