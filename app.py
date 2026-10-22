@@ -19,8 +19,7 @@ supabase: Client = init_supabase()
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
 def redemarrer():
-    try: st.rerun()
-    except: st.experimental_rerun()
+    st.rerun()
 
 # --- SYSTÈME DE CHARGEMENT SÉCURISÉ ---
 def load_db_from_supabase(table_name, columns):
