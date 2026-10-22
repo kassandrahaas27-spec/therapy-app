@@ -7,7 +7,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
 # --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS REELS ---
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://fazxmveukiqpcefzghsr.supabase.co"
 SUPABASE_KEY = "sb_publishable_VPYYOesD0T97zyl3V9b0Ng_VUXQ-lph"
 
 @st.cache_resource
