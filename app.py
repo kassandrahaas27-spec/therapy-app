@@ -159,20 +159,24 @@ with tab1:
                         phases = json.loads(phases)
                     p1 = phases[0]
                     date_debut = datetime.strptime(info.get("start_date", str(date.today())), "%Y-%m-%d").date()
+                    duree = int(p1.get("duration", 7))
                     jours_ecoules = (date.today() - date_debut).days
-                    if jours_ecoules < int(p1.get("duration", 7)):
+                    if jours_ecoules < duree:
                         dose_actuelle = int(p1.get("dose", 1))
-                        jours_restants = int(p1.get("duration", 7)) - jours_ecoules
-                       
-                        date_changement = date_debut + timedelta(days=int(p1.get("duration", 7)))
+                        jours_restants = duree - jours_ecoules
+                        date_changement = date_debut + timedelta(days=duree)
                         date_txt = date_changement.strftime("%d/%m/%Y")
-                        dose_suivante = int(phases[1].get("dose", 2)) if len(phases) > 1 else dose_actuelle
-                        st.info(f"⏳ Palier 1 en cours : prendre {dose_actuelle} cachet(s) par repas. Passage à {dose_suivante} cachet(s) le {date_txt} (dans {jours_restants} jour(s)).")                    if len(phases) > 1:
-                        
+                        dose_suivante = dose_actuelle
+                        if len(phases) > 1:
+                            dose_suivante = int(phases[1].get("dose", 2))
+                        message = "⏳ Palier 1 en cours : prendre " + str(dose_actuelle) + " cachet(s) par repas. Passage à " + str(dose_suivante) + " cachet(s) le " + date_txt + " (dans " + str(jours_restants) + " jour(s))."
+                        st.info(message)
+                    else:
+                        if len(phases) > 1:
                             dose_actuelle = int(phases[1].get("dose", 2))
-                        st.success(f"🚀 **Palier Maximal atteint !** Dose stable de **{dose_actuelle} cachet(s)**.")
+                        st.success("🚀 Palier maximal atteint : dose stable de " + str(dose_actuelle) + " cachet(s).")
                 except Exception as e:
-                    st.warning(f"Décompte indisponible : {e}")
+                    st.warning("Décompte indisponible : " + str(e))
 
             st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
             col_m, col_mid, col_s = st.columns(3)
