@@ -266,25 +266,36 @@ with tab2:
                 x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
             ).properties(width=450, height=250)
             st.altair_chart(graphique_zoome, use_container_width=False)
-            
+
             st.write("### 🔮 Analyse de ton Cycle & Fertilité SOPK")
-            temps_list = cycle_df["Température"].tolist()
-            status_list = cycle_df["Cycle Status"].tolist()
-            rapports_list = cycle_df["Rapport Sexuel"].tolist()
-            dates_list = cycle_df["Date"].tolist()
-            
-            ovulation_detectee = None
+            cycle_tri = cycle_df.copy()
+            cycle_tri["Température"] = pd.to_numeric(cycle_tri["Température"], errors="coerce")
+            cycle_tri = cycle_tri.dropna(subset=["Température"]).sort_values(by="Date").reset_index(drop=True)
+            temps_list = cycle_tri["Température"].tolist()
+            status_list = cycle_tri["Cycle Status"].tolist()
+            rapports_list = cycle_tri["Rapport Sexuel"].tolist()
+            dates_list = cycle_tri["Date"].tolist()
+
             date_ovulation_reelle = None
-            if len(temps_list) >= 4:
-                for i in range(3, len(temps_list)):
-                    moyenne_avant = sum(temps_list[i-3:i]) / 3
-                    if temps_list[i] >= moyenne_avant + 0.28 and all(t >= moyenne_avant + 0.2 for t in temps_list[i:min(i+3, len(temps_list))]):
-                        ovulation_detectee = dates_list[i]
-                        date_ovulation_reelle = datetime.strptime(ovulation_detectee, "%Y-%m-%d").date()
-            
+            date_hausse = None
+            if len(temps_list) >= 9:
+                for i in range(6, len(temps_list) - 2):
+                    base = max(temps_list[i-6:i])
+                    if temps_list[i] > base and temps_list[i+1] > base and temps_list[i+2] >= base + 0.2:
+                        date_hausse = datetime.strptime(dates_list[i], "%Y-%m-%d").date()
+                        date_ovulation_reelle = date_hausse - timedelta(days=1)
+
+            st.write("#### 🌡️ Ovulation estimée selon ta courbe")
+            if date_ovulation_reelle:
+                st.success("🥚 Hausse de température détectée à partir du " + date_hausse.strftime("%d/%m/%Y") + ". Ovulation probable vers le **" + date_ovulation_reelle.strftime("%d/%m/%Y") + "** (à 1 jour près).")
+            elif len(temps_list) < 9:
+                st.info("Il faut au moins 9 températures enregistrées pour détecter une hausse. Tu en as " + str(len(temps_list)) + ".")
+            else:
+                st.info("Pas de hausse nette détectée pour le moment. Continue à prendre ta température chaque matin.")
+
             test_ovulation_recent = "🥚 Test d'Ovulation Positif" in status_list[-5:]
             rapport_recent = "Oui" in rapports_list[-3:]
-            
+
             if test_ovulation_recent and rapport_recent:
                 st.metric(label="Chances de conception estimées", value="85% - 95%", delta="Optimale (Rapport + Test OK)", delta_color="inverse")
             elif date_ovulation_reelle and "Oui" in rapports_list[-5:]:
@@ -294,9 +305,9 @@ with tab2:
 
             st.write("#### 📅 Mon Calendrier Prédictif du Cycle")
             regles_dates = cycle_df[cycle_df["Cycle Status"] == "🩸 Début des Règles"]["Date"].tolist()
-            
+
             if regles_dates:
-                dernieres_regles = datetime.strptime(regles_dates[-1], "%Y-%m-%d").date()
+                dernieres_regles = datetime.strptime(sorted(regles_dates)[-1], "%Y-%m-%d").date()
                 if date_ovulation_reelle:
                     prochaines_regles = date_ovulation_reelle + timedelta(days=14)
                     debut_fertilite = date_ovulation_reelle - timedelta(days=4)
@@ -307,7 +318,7 @@ with tab2:
                     debut_fertilite = prochaines_regles - timedelta(days=18)
                     fin_fertilite = prochaines_regles - timedelta(days=14)
                     jour_test_grossesse = prochaines_regles
-                
+
                 st.markdown(f"""
                 * **🩸 Prochaines règles estimées :** autour du **{prochaines_regles.strftime('%d/%m/%Y')}**.
                 * **🥚 Prochaine fenêtre de fertilité :** du **{debut_fertilite.strftime('%d/%m/%Y')}** au **{fin_fertilite.strftime('%d/%m/%Y')}**.
