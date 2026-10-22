@@ -491,26 +491,104 @@ with tab3:
 # --- TAB 4 : SUIVI NUTRITION ---
 with tab4:
     st.subheader("🥗 Mon Suivi Métabolique")
-    glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=3.0, value=0.95, step=0.01, key="t4_g_val")
-    glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
+
+    # ---------- GLYCÉMIE ----------
+    st.write("### 🩸 Ma glycémie")
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=3.0, value=0.95, step=0.01, key="t4_g_val")
+    with cg2:
+        glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
+
+    if glyc_mode == "Matin à jeun":
+        if glyc_val < 0.95:
+            st.success("✅ Valeur dans le repère habituel à jeun (moins de 0,95 g/L).")
+        elif glyc_val < 1.26:
+            st.warning("⚠️ Valeur à surveiller : parles-en à ton médecin ou ta sage-femme.")
+        else:
+            st.error("🛑 Valeur élevée : contacte ton médecin rapidement.")
+    else:
+        if glyc_val < 1.20:
+            st.success("✅ Valeur dans le repère habituel après repas (moins de 1,20 g/L).")
+        elif glyc_val < 1.40:
+            st.warning("⚠️ Valeur à surveiller : parles-en à ton médecin ou ta sage-femme.")
+        else:
+            st.error("🛑 Valeur élevée : contacte ton médecin rapidement.")
+    st.caption("Repères indicatifs. Ton médecin peut te donner des objectifs différents.")
+
     if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
-        row_g = {"Date": str(date.today()), "Glycémie à jeun": f"{glyc_val} g/L" if glyc_mode == "Matin à jeun" else "-", "Glycémie Post-Prandiale": f"{glyc_val} g/L" if glyc_mode == "2h après le repas" else "-"}
-        save_row_to_supabase("suivi_glycemie", row_g)
-        st.success("🎉 Taux enregistré !")
-        redemarrer()
+        txt_g = str(glyc_val) + " g/L"
+        row_g = {"Date": str(date.today()), "Glycémie à jeun": txt_g if glyc_mode == "Matin à jeun" else "-", "Glycémie Post-Prandiale": txt_g if glyc_mode == "2h après le repas" else "-"}
+        if save_row_to_supabase("suivi_glycemie", row_g):
+            st.success("🎉 Taux enregistré !")
+            redemarrer()
+
+    if not glyc_df_local.empty:
+        st.write("**📈 Mon historique de glycémie**")
+        g_df = glyc_df_local.copy().sort_values(by="Date").reset_index(drop=True)
+        g_chart = pd.DataFrame({"Date": g_df["Date"]})
+        g_chart["À jeun"] = pd.to_numeric(g_df["Glycémie à jeun"].astype(str).str.replace(" g/L", "", regex=False), errors="coerce")
+        g_chart["Après repas"] = pd.to_numeric(g_df["Glycémie Post-Prandiale"].astype(str).str.replace(" g/L", "", regex=False), errors="coerce")
+        st.line_chart(g_chart.set_index("Date"))
+        st.dataframe(g_df, use_container_width=True)
+
+        if "id" in glyc_df_local.columns:
+            opts_g = {}
+            for _, r in glyc_df_local.iterrows():
+                opts_g[str(r["Date"]) + " (n°" + str(r["id"]) + ")"] = r["id"]
+            g_choisi = st.selectbox("Supprimer une mesure", list(opts_g.keys()), key="t4_del_g_select")
+            if st.button("🚨 Supprimer cette mesure", key="t4_del_g_btn"):
+                try:
+                    supabase.table("suivi_glycemie").delete().eq("id", int(opts_g[g_choisi])).execute()
+                    redemarrer()
+                except Exception as e:
+                    st.error("Erreur de suppression : " + str(e))
 
     st.write("---")
-    poids_val = st.number_input("Ton poids actuel (kg)", min_value=30.0, max_value=200.0, value=70.0, step=0.1, key="t4_poids_val")
+
+    # ---------- POIDS ----------
+    st.write("### ⚖️ Mon poids")
+    cp1, cp2 = st.columns(2)
+    with cp1:
+        poids_val = st.number_input("Ton poids actuel (kg)", min_value=30.0, max_value=200.0, value=70.0, step=0.1, key="t4_poids_val")
+    with cp2:
+        taille_val = st.number_input("Ta taille (cm)", min_value=120, max_value=220, value=165, step=1, key="t4_taille_val")
+
+    imc = poids_val / ((taille_val / 100) ** 2)
+    st.metric(label="IMC actuel", value=str(round(imc, 1)))
+
+    note_poids = st.text_input("Note (facultatif)", key="t4_poids_note")
     if st.button("💾 Sauvegarder ma pesée", key="t4_submit_poids"):
-        row_p = {"Date": str(date.today()), "Poids (kg)": poids_val, "Note": "", "Taille (cm)": 165}
-        save_row_to_supabase("suivi_poids", row_p)
-        st.success("🎉 Pesée enregistrée !")
-        redemarrer()
+        row_p = {"Date": str(date.today()), "Poids (kg)": poids_val, "Note": note_poids, "Taille (cm)": int(taille_val)}
+        if save_row_to_supabase("suivi_poids", row_p):
+            st.success("🎉 Pesée enregistrée !")
+            redemarrer()
+
     if not poids_df_local.empty:
         import altair as alt
-        graphique_poids = alt.Chart(poids_df_local).mark_line(point=True, color="#e377c2").encode(x='Date:T', y='Poids (kg):Q').properties(width=450, height=200)
+        p_df = poids_df_local.copy().sort_values(by="Date").reset_index(drop=True)
+        graphique_poids = alt.Chart(p_df).mark_line(point=True, color="#e377c2").encode(
+            x=alt.X("Date:T", title="Date"), y=alt.Y("Poids (kg):Q", scale=alt.Scale(zero=False))
+        ).properties(width=450, height=200)
         st.altair_chart(graphique_poids, use_container_width=False)
+        st.dataframe(p_df, use_container_width=True)
 
+        if "id" in poids_df_local.columns:
+            opts_p = {}
+            for _, r in poids_df_local.iterrows():
+                opts_p[str(r["Date"]) + " - " + str(r["Poids (kg)"]) + " kg (n°" + str(r["id"]) + ")"] = r["id"]
+            p_choisi = st.selectbox("Supprimer une pesée", list(opts_p.keys()), key="t4_del_p_select")
+            if st.button("🚨 Supprimer cette pesée", key="t4_del_p_btn"):
+                try:
+                    supabase.table("suivi_poids").delete().eq("id", int(opts_p[p_choisi])).execute()
+                    redemarrer()
+                except Exception as e:
+                    st.error("Erreur de suppression : " + str(e))
+
+    st.write("---")
+
+    # ---------- NUTRITION ----------
+    st.write("### 🍽️ Conseils nutrition
 # --- TAB 5 : HISTORIQUE DIRECT ---
 with tab5:
     st.subheader("📜 Historique Général Cloud")
