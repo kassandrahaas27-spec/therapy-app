@@ -462,7 +462,18 @@ with tab3:
         if save_row_to_supabase("rdv_medicaux", row_r):
             st.success("🎉 Rendez-vous ajouté au Cloud !")
             redemarrer()
-    if not rdv_df.empty: st.dataframe(rdv_df, use_container_width=True)
+    if not rdv_df.empty:
+        st.dataframe(rdv_df, use_container_width=True)
+        st.write("**🗑️ Supprimer un rendez-vous**")
+        options_rdv = {f"{r['Date']} - {r['Médecin / Spécialité']} (n°{r['id']})": r['id'] for _, r in rdv_df.iterrows()}
+        rdv_choisi = st.selectbox("Choisir le rendez-vous à supprimer", list(options_rdv.keys()), key="t3_del_select")
+        if st.button("🚨 Supprimer ce rendez-vous", key="t3_del_btn"):
+            try:
+                supabase.table("rdv_medicaux").delete().eq("id", options_rdv[rdv_choisi]).execute()
+                st.success("Rendez-vous supprimé !")
+                redemarrer()
+            except Exception as e:
+                st.error(f"Erreur de suppression : {e}")
 
 # --- TAB 4 : SUIVI NUTRITION ---
 with tab4:
