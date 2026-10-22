@@ -223,8 +223,9 @@ with tab1:
                 }
                 save_row_to_supabase("historique_prises", row_data)
                 
-                info_m["stock"] = max(0, int(info_m.get("stock", 30)) - total_de_cachets_pris)
-                supabase.table("medicaments").upsert({"name": name, "config": json.dumps(info_m)}).execute()
+                info_med = meds[name]
+                info_med["stock"] = max(0, int(info_med.get("stock", 30)) - total_de_cachets_pris)
+                supabase.table("medicaments").upsert({"name": name, "config": info_med}).execute()
                 
             st.success("🎉 Enregistré dans ton cloud Supabase !")
             redemarrer()
