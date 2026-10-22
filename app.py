@@ -151,9 +151,12 @@ with tab1:
             st.write(f"#### 💊 {name}")
             
             dose_actuelle = int(info.get("nb_cachet_par_repas", 1))
-            if info.get("is_evolution", False) and "phases" in info:
+                       if info.get("is_evolution", False) and "phases" in info:
                 try:
-                    p1 = info["phases"]
+                    phases = info["phases"]
+                    if isinstance(phases, str):
+                        phases = json.loads(phases)
+                    p1 = phases[0]
                     date_debut = datetime.strptime(info.get("start_date", str(date.today())), "%Y-%m-%d").date()
                     jours_ecoules = (date.today() - date_debut).days
                     if jours_ecoules < int(p1.get("duration", 7)):
@@ -161,11 +164,11 @@ with tab1:
                         jours_restants = int(p1.get("duration", 7)) - jours_ecoules
                         st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation dans **{jours_restants} jour(s)**.")
                     else:
-                        if len(info["phases"]) > 1:
-                            dose_actuelle = int(info["phases"].get("dose", 2))
+                        if len(phases) > 1:
+                            dose_actuelle = int(phases[1].get("dose", 2))
                         st.success(f"🚀 **Palier Maximal atteint !** Dose stable de **{dose_actuelle} cachet(s)**.")
-                except:
-                    pass
+                except Exception as e:
+                    st.warning(f"Décompte indisponible : {e}")
             
             st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
             col_m, col_mid, col_s = st.columns(3)
