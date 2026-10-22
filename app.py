@@ -163,8 +163,8 @@ with tab1:
                     if jours_ecoules < int(p1.get("duration", 7)):
                         dose_actuelle = int(p1.get("dose", 1))
                         jours_restants = int(p1.get("duration", 7)) - jours_ecoules
-                        st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation dans **{jours_restants} jour(s)**.")
-                    else:
+                        date_changement = date_debut + timedelta(days=int(p1.get("duration", 7)))
+                        st.info(f"⏳ **Palier 1 en cours** : Prendre **{dose_actuelle} cachet(s)** par repas. Augmentation à **{int(phases[1].get('dose', 2)) if len(phases) > 1 else dose_actuelle} cachet(s)** le **{date_changement.strftime('%d/%m/%Y')}** (dans {jours_restants} jour(s)).")                    else:
                         if len(phases) > 1:
                             dose_actuelle = int(phases[1].get("dose", 2))
                         st.success(f"🚀 **Palier Maximal atteint !** Dose stable de **{dose_actuelle} cachet(s)**.")
