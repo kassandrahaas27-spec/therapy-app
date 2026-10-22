@@ -37,7 +37,7 @@ def save_row_to_supabase(table_name, data_dict):
     try: supabase.table(table_name).insert(data_dict).execute()
     except Exception as e: st.error(f"Erreur de sauvegarde Cloud : {e}")
 
-# Chargement sécurisé (renvoie des tableaux vides si la table vient d'être créée)
+# Chargement sécurisé depuis Supabase
 history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
 cycle_df = load_db_from_supabase("cycle_temperature", ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
 rdv_df = load_db_from_supabase("rdv_medicaux", ["Date", "Heure", "Médecin / Spécialité", "Lieu", "Notes"])
@@ -61,7 +61,7 @@ poids_config = {}
 try:
     config_response = supabase.table("config_grossesse").select("*").execute()
     if config_response.data:
-        config_data = config_response.data[0]["config"] if isinstance(config_response.data, list) else config_response.data.get("config", "{}")
+        config_data = config_response.data["config"] if isinstance(config_response.data, list) else config_response.data.get("config", "{}")
         poids_config = json.loads(config_data) if isinstance(config_data, str) else config_data
 except:
     poids_config = {}
