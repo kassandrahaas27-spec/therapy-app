@@ -326,8 +326,9 @@ with tab2:
         date_debut_sa = date_ovul - timedelta(days=14)
         jours_totaux_sa = (date.today() - date_debut_sa).days
         sa_semaines = max(0, jours_totaux_sa // 7)
-        sa_jours = max(0, jours_totaux_sa % 7)
-        
+st.metric(label="🤰 Où j'en suis", value=str(sa_semaines) + " SA + " + str(sa_jours) + " J")
+st.caption("Date prévue d'accouchement : " + date_terme.strftime("%d/%m/%Y"))
+
         # --- BLOC ÉVOLUTION DE BÉBÉ TOUT EN HAUT COMMENT DEMANDÉ ---
         st.write("### 📢 L'évolution de bébé cette semaine")
         if sa_semaines <= 6:
