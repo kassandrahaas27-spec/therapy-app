@@ -7,9 +7,9 @@ from supabase import create_client, Client
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS ---
+# --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS REES ---
 SUPABASE_URL = "https://supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhenhtdmV1a2lxcGNlZnpnaHNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MDg5NzUsImV4cCI6MjEwODE4NDk3NX0.Wgte8gModYiTAWuX0EuODuYrmiGZ42Z6pEHF91UJztI"
+SUPABASE_KEY = "sb_publishable_VPYYOesD0T97zyl3V9b0Ng_VUXQ-lph"
 
 @st.cache_resource
 def init_supabase() -> Client:
