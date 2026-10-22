@@ -19,9 +19,11 @@ supabase: Client = init_supabase()
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
 def redemarrer():
+    st.cache_data.clear()
     st.rerun()
 
 # --- SYSTÈME DE CHARGEMENT SÉCURISÉ ---
+@st.cache_data(ttl=60)
 def load_db_from_supabase(table_name, columns):
     try:
         response = supabase.table(table_name).select("*").execute()
@@ -49,26 +51,33 @@ glyc_df_local = load_db_from_supabase("suivi_glycemie", ["Date", "Glycémie à j
 poids_df_local = load_db_from_supabase("suivi_poids", ["Date", "Poids (kg)", "Note", "Taille (cm)"])
 
 # Chargement sécurisé des médicaments
-meds = {}
-try:
-    meds_response = supabase.table("medicaments").select("*").execute()
-    if meds_response.data:
-        for row in meds_response.data:
-            if isinstance(row, dict) and "name" in row and "config" in row:
-                config_data = row["config"]
-                meds[row["name"]] = json.loads(config_data) if isinstance(config_data, str) else config_data
-except:
-    meds = {}
+@st.cache_data(ttl=60)
+def load_meds():
+    resultat = {}
+    try:
+        rep = supabase.table("medicaments").select("*").execute()
+        if rep.data:
+            for row in rep.data:
+                if isinstance(row, dict) and "name" in row and "config" in row:
+                    c = row["config"]
+                    resultat[row["name"]] = json.loads(c) if isinstance(c, str) else c
+    except Exception:
+        resultat = {}
+    return resultat
 
-# Chargement sécurisé configuration grossesse
-poids_config = {}
-try:
-    config_response = supabase.table("config_grossesse").select("*").eq("id", 1).execute()
-    if config_response.data:
-        config_data = config_response.data[0]["config"]
-        poids_config = json.loads(config_data) if isinstance(config_data, str) else config_data
-except Exception:
-    poids_config = {}
+@st.cache_data(ttl=60)
+def load_config_grossesse():
+    try:
+        rep = supabase.table("config_grossesse").select("*").eq("id", 1).execute()
+        if rep.data:
+            c = rep.data[0]["config"]
+            return json.loads(c) if isinstance(c, str) else c
+    except Exception:
+        pass
+    return {}
+
+meds = load_meds()
+poids_config = load_config_grossesse()
     
 # --- MENU DE GAUCHE ---
 st.sidebar.header("⚙️ Configuration Globale")
