@@ -778,14 +778,38 @@ with tab4:
 with tab5:
     st.subheader("📜 Historique Général Cloud")
     st.write("**Mon journal de bord des prises du jour :**")
-    if not history_df.empty: 
+    if not history_df.empty:
         st.dataframe(history_df, use_container_width=True)
+        if "id" in history_df.columns:
+            opts_h = {}
+            for _, r in history_df.iterrows():
+                opts_h[str(r["Date"]) + " - " + str(r["Médicament"]) + " - " + str(r["Prise"]) + " (n°" + str(r["id"]) + ")"] = r["id"]
+            h_choisi = st.selectbox("Supprimer une ligne du journal", list(opts_h.keys()), key="t5_del_h_select")
+            if st.button("🚨 Supprimer cette ligne", key="t5_del_h_btn"):
+                try:
+                    supabase.table("historique_prises").delete().eq("id", int(opts_h[h_choisi])).execute()
+                    st.success("Ligne supprimée !")
+                    redemarrer()
+                except Exception as e:
+                    st.error("Erreur de suppression : " + str(e))
     else:
         st.caption("Aucune prise de médicament enregistrée dans le Cloud pour le moment.")
-        
+
     st.write("---")
     st.write("**Mon historique des températures :**")
-    if not cycle_df.empty: 
+    if not cycle_df.empty:
         st.dataframe(cycle_df, use_container_width=True)
+        if "id" in cycle_df.columns:
+            opts_t = {}
+            for _, r in cycle_df.iterrows():
+                opts_t[str(r["Date"]) + " - " + str(r["Température"]) + " °C (n°" + str(r["id"]) + ")"] = r["id"]
+            t_choisi = st.selectbox("Supprimer une température", list(opts_t.keys()), key="t5_del_t_select")
+            if st.button("🚨 Supprimer cette température", key="t5_del_t_btn"):
+                try:
+                    supabase.table("cycle_temperature").delete().eq("id", int(opts_t[t_choisi])).execute()
+                    st.success("Température supprimée !")
+                    redemarrer()
+                except Exception as e:
+                    st.error("Erreur de suppression : " + str(e))
     else:
         st.caption("Aucune température enregistrée dans le Cloud pour le moment.")
