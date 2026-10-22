@@ -64,12 +64,12 @@ except:
 poids_config = {}
 try:
     config_response = supabase.table("config_grossesse").select("*").eq("id", 1).execute()
-if config_response.data:
-        config_data = config_response.data["config"] if isinstance(config_response.data, list) else config_response.data.get("config", "{}")
+    if config_response.data:
+        config_data = config_response.data[0]["config"]
         poids_config = json.loads(config_data) if isinstance(config_data, str) else config_data
-except:
+except Exception:
     poids_config = {}
-
+    
 # --- MENU DE GAUCHE ---
 st.sidebar.header("⚙️ Configuration Globale")
 parcours_mode = st.sidebar.selectbox("🌸 Ton parcours actuel :", ["Suivi de Cycle & Essai Bébé", "Suivi de Grossesse Évolutif", "Parcours PMA (Procréation Médicalement Assistée)"], key="side_parcours_mode")
