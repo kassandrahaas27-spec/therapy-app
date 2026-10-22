@@ -494,31 +494,44 @@ with tab4:
 
     # ---------- GLYCÉMIE ----------
     st.write("### 🩸 Ma glycémie")
+    enceinte = st.checkbox("🤰 Je suis enceinte (objectifs de grossesse)", value=(parcours_mode == "Suivi de Grossesse Évolutif"), key="t4_enceinte")
+    g_date = st.date_input("🗓️ Date de la mesure", value=date.today(), max_value=date.today(), key="t4_g_date")
     cg1, cg2 = st.columns(2)
     with cg1:
-        glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=3.0, value=0.95, step=0.01, key="t4_g_val")
+        glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=6.0, value=0.95, step=0.01, key="t4_g_val")
     with cg2:
         glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
 
-    if glyc_mode == "Matin à jeun":
-        if glyc_val < 0.95:
-            st.success("✅ Valeur dans le repère habituel à jeun (moins de 0,95 g/L).")
+    a_jeun = (glyc_mode == "Matin à jeun")
+    if glyc_val < 0.70:
+        st.error("🔻 Glycémie basse (hypoglycémie). Prends tout de suite 15 g de sucre (3 morceaux de sucre ou un demi-verre de jus), assieds-toi, puis recontrôle dans 15 minutes. Si elle reste basse ou si tu as des malaises (sueurs, tremblements, confusion), appelle ton médecin ou le 15.")
+    elif a_jeun:
+        seuil_ok = 0.95 if enceinte else 1.00
+        if glyc_val < seuil_ok:
+            st.success("✅ Bonne valeur à jeun. Continue : repas réguliers, légumes en premier, marche après les repas, eau.")
         elif glyc_val < 1.26:
-            st.warning("⚠️ Valeur à surveiller : parles-en à ton médecin ou ta sage-femme.")
+            msg = "⚠️ Valeur un peu élevée à jeun. Bois un verre d'eau, évite les sucres rapides aujourd'hui, fais un petit-déjeuner avec protéines et fibres, et marche 10 à 15 min après les repas. Si cela se répète 2 à 3 jours, préviens ton médecin."
+            if enceinte:
+                msg = msg + " En grossesse, parles-en rapidement à ta sage-femme ou ton médecin."
+            st.warning(msg)
         else:
-            st.error("🛑 Valeur élevée : contacte ton médecin rapidement.")
+            st.error("🛑 Valeur élevée à jeun. Refais le contrôle (mains propres et sèches). Si elle est confirmée, appelle ton médecin dans la journée. Si tu as une soif intense, des vomissements, une grande fatigue ou une respiration inhabituelle, appelle le 15 ou va aux urgences.")
     else:
-        if glyc_val < 1.20:
-            st.success("✅ Valeur dans le repère habituel après repas (moins de 1,20 g/L).")
-        elif glyc_val < 1.40:
-            st.warning("⚠️ Valeur à surveiller : parles-en à ton médecin ou ta sage-femme.")
+        seuil_ok = 1.20 if enceinte else 1.40
+        if glyc_val < seuil_ok:
+            st.success("✅ Bonne valeur après repas. Continue : légumes en premier et petite marche après le repas.")
+        elif glyc_val < 2.00:
+            msg = "⚠️ Valeur un peu élevée après repas. Marche tranquillement 10 à 15 min, bois de l'eau, et note ce que tu as mangé. Au prochain repas : légumes d'abord, moins de féculents et pas de boisson sucrée. Si cela se répète, préviens ton médecin."
+            if enceinte:
+                msg = msg + " En grossesse, parles-en rapidement à ta sage-femme ou ton médecin."
+            st.warning(msg)
         else:
-            st.error("🛑 Valeur élevée : contacte ton médecin rapidement.")
-    st.caption("Repères indicatifs. Ton médecin peut te donner des objectifs différents.")
+            st.error("🛑 Valeur très élevée après repas. Hydrate-toi, évite tout sucre, refais un contrôle dans 1 heure. Contacte ton médecin dans la journée. En cas de malaise, soif intense ou vomissements, appelle le 15.")
+    st.caption("Repères indicatifs, je ne remplace pas un médecin. Ton équipe médicale fixe tes objectifs personnels.")
 
     if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
         txt_g = str(glyc_val) + " g/L"
-        row_g = {"Date": str(date.today()), "Glycémie à jeun": txt_g if glyc_mode == "Matin à jeun" else "-", "Glycémie Post-Prandiale": txt_g if glyc_mode == "2h après le repas" else "-"}
+        row_g = {"Date": str(g_date), "Glycémie à jeun": txt_g if a_jeun else "-", "Glycémie Post-Prandiale": "-" if a_jeun else txt_g}
         if save_row_to_supabase("suivi_glycemie", row_g):
             st.success("🎉 Taux enregistré !")
             redemarrer()
@@ -548,34 +561,67 @@ with tab4:
 
     # ---------- POIDS ----------
     st.write("### ⚖️ Mon poids")
+
+    poids_defaut = 70.0
+    taille_defaut = 165
+    p_df = pd.DataFrame()
+    if not poids_df_local.empty:
+        p_df = poids_df_local.copy()
+        p_df["Poids (kg)"] = pd.to_numeric(p_df["Poids (kg)"], errors="coerce")
+        p_df = p_df.dropna(subset=["Poids (kg)"]).sort_values(by="Date").reset_index(drop=True)
+        if not p_df.empty:
+            poids_defaut = float(p_df["Poids (kg)"].iloc[-1])
+            try:
+                taille_defaut = int(float(p_df["Taille (cm)"].dropna().iloc[-1]))
+            except Exception:
+                taille_defaut = 165
+
+    p_date = st.date_input("🗓️ Date de la pesée", value=date.today(), max_value=date.today(), key="t4_p_date")
     cp1, cp2 = st.columns(2)
     with cp1:
-        poids_val = st.number_input("Ton poids actuel (kg)", min_value=30.0, max_value=200.0, value=70.0, step=0.1, key="t4_poids_val")
+        poids_val = st.number_input("Poids (kg)", min_value=30.0, max_value=200.0, value=poids_defaut, step=0.1, key="t4_poids_val")
     with cp2:
-        taille_val = st.number_input("Ta taille (cm)", min_value=120, max_value=220, value=165, step=1, key="t4_taille_val")
+        taille_val = st.number_input("Taille (cm)", min_value=120, max_value=220, value=taille_defaut, step=1, key="t4_taille_val")
 
     imc = poids_val / ((taille_val / 100) ** 2)
-    st.metric(label="IMC actuel", value=str(round(imc, 1)))
-
+    st.caption("IMC pour ce poids : " + str(round(imc, 1)))
     note_poids = st.text_input("Note (facultatif)", key="t4_poids_note")
+
     if st.button("💾 Sauvegarder ma pesée", key="t4_submit_poids"):
-        row_p = {"Date": str(date.today()), "Poids (kg)": poids_val, "Note": note_poids, "Taille (cm)": int(taille_val)}
+        row_p = {"Date": str(p_date), "Poids (kg)": poids_val, "Note": note_poids, "Taille (cm)": int(taille_val)}
         if save_row_to_supabase("suivi_poids", row_p):
             st.success("🎉 Pesée enregistrée !")
             redemarrer()
 
-    if not poids_df_local.empty:
+    if not p_df.empty:
+        poids_depart = float(p_df["Poids (kg)"].iloc[0])
+        poids_actuel = float(p_df["Poids (kg)"].iloc[-1])
+        perdu = poids_depart - poids_actuel
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Poids de départ", str(round(poids_depart, 1)) + " kg")
+        m2.metric("Poids actuel", str(round(poids_actuel, 1)) + " kg")
+        if perdu >= 0:
+            m3.metric("Kilos perdus", str(round(perdu, 1)) + " kg")
+        else:
+            m3.metric("Kilos pris", str(round(abs(perdu), 1)) + " kg")
+        st.caption("Départ : pesée du " + str(p_df["Date"].iloc[0]) + ". Dernière pesée : " + str(p_df["Date"].iloc[-1]) + ".")
+
         import altair as alt
-        p_df = poids_df_local.copy().sort_values(by="Date").reset_index(drop=True)
         graphique_poids = alt.Chart(p_df).mark_line(point=True, color="#e377c2").encode(
             x=alt.X("Date:T", title="Date"), y=alt.Y("Poids (kg):Q", scale=alt.Scale(zero=False))
         ).properties(width=450, height=200)
         st.altair_chart(graphique_poids, use_container_width=False)
-        st.dataframe(p_df, use_container_width=True)
 
-        if "id" in poids_df_local.columns:
+        st.write("**📅 Historique de mes pesées**")
+        h_df = p_df.copy()
+        h_df["Variation (kg)"] = h_df["Poids (kg)"].diff().round(1)
+        h_df["Perdu depuis le début (kg)"] = (poids_depart - h_df["Poids (kg)"]).round(1)
+        colonnes = [c for c in ["Date", "Poids (kg)", "Variation (kg)", "Perdu depuis le début (kg)", "Note"] if c in h_df.columns]
+        st.dataframe(h_df[colonnes].iloc[::-1].reset_index(drop=True), use_container_width=True)
+
+        if "id" in p_df.columns:
             opts_p = {}
-            for _, r in poids_df_local.iterrows():
+            for _, r in p_df.iterrows():
                 opts_p[str(r["Date"]) + " - " + str(r["Poids (kg)"]) + " kg (n°" + str(r["id"]) + ")"] = r["id"]
             p_choisi = st.selectbox("Supprimer une pesée", list(opts_p.keys()), key="t4_del_p_select")
             if st.button("🚨 Supprimer cette pesée", key="t4_del_p_btn"):
@@ -587,74 +633,75 @@ with tab4:
 
     st.write("---")
 
-    # ---------- NUTRITION, SPORT & SUIVI DES CONSEILS ----------
+    # ---------- QUAND FAIRE LA GLYCÉMIE + CONSEILS ----------
     st.write("### 🩸 Quand faire ma glycémie ?")
     with st.expander("📅 Repères pré-diabète et grossesse", expanded=True):
         st.markdown("""
 **En pré-diabète (hors grossesse)**
 * En général, pas besoin de se piquer tous les jours, sauf si ton médecin te le demande.
-* Prise de sang à jeun et HbA1c : le plus souvent **1 fois par an**, ou tous les 3 à 6 mois si ton médecin le décide (surtout après un changement de traitement ou de poids).
+* Prise de sang à jeun et HbA1c : le plus souvent **1 fois par an**, ou tous les 3 à 6 mois si ton médecin le décide.
 * Si tu fais des contrôles à la maison : **le matin à jeun**, ou **2 h après le début du repas**, jamais juste après avoir mangé.
-* Repère habituel à jeun : moins de 1,00 g/L. Entre 1,00 et 1,25 g/L, on parle de pré-diabète. À partir de 1,26 g/L (confirmé), c'est un diabète.
+* À jeun : moins de 1,00 g/L = normal. De 1,00 à 1,25 g/L = pré-diabète. À partir de 1,26 g/L (confirmé) = diabète.
 
 **Si tu es enceinte (SOPK et pré-diabète = facteurs de risque)**
 * Une glycémie à jeun est souvent demandée **dès le début de grossesse**.
-* Le test de dépistage **HGPO (boisson sucrée)** se fait entre **24 et 28 SA**. Ton médecin peut le proposer plus tôt.
-* Si un diabète gestationnel est confirmé : mesures **à jeun** et **1 h ou 2 h après les repas**, selon la consigne de ton équipe.
-* Objectifs fréquents en grossesse : à jeun moins de 0,95 g/L, 2 h après repas moins de 1,20 g/L.
+* Le test **HGPO (boisson sucrée)** se fait entre **24 et 28 SA**, parfois plus tôt.
+* Si un diabète gestationnel est confirmé : mesures **à jeun** et **1 h ou 2 h après les repas**, selon ton équipe.
+* Objectifs fréquents : à jeun moins de 0,95 g/L, 2 h après repas moins de 1,20 g/L.
 
-**À noter dans l'appli et à montrer à ton médecin :** toutes tes mesures, avec le moment (à jeun ou après repas).
-
-**Quand consulter sans attendre :** soif intense, urines très fréquentes, fatigue inhabituelle, vision floue, ou glycémie très élevée.
+**Consulte sans attendre :** soif intense, urines très fréquentes, fatigue inhabituelle, vision floue, ou glycémie très élevée.
         """)
-        st.caption("Repères généraux : ton médecin ou ta sage-femme fixent tes objectifs personnels.")
 
-    with st.expander("🥦 Conseils nutrition (SOPK et résistance à l insuline)"):
+    with st.expander("🥦 Conseils nutrition (SOPK et résistance à l'insuline)"):
         st.markdown("""
 * Commence le repas par les **légumes** et les fibres, puis les protéines, puis les féculents.
-* **3 repas réguliers**, sans sauter de repas. Collation si besoin.
-* Féculents **complets** en portion modérée (riz complet, lentilles, pois chiches, pain complet).
-* Évite les boissons sucrées et les jus : bois de l'**eau** (1,5 L par jour).
-* Associe toujours un aliment sucré à des protéines ou des fibres (fruit + amandes, yaourt + fruits rouges).
-* Limite les produits ultra-transformés, pâtisseries et sucres cachés.
-* En grossesse : pas de viande, poisson ou œuf **cru ou peu cuit**, pas de fromage au lait cru, lave bien les légumes, pas d'alcool.
+* **3 repas réguliers**, sans en sauter. Collation si besoin.
+* Féculents **complets** en portion modérée.
+* Évite les boissons sucrées et les jus : bois de l'**eau** (environ 1,5 L par jour).
+* Associe un aliment sucré à des protéines ou des fibres (fruit + amandes, yaourt + fruits rouges).
+* Limite les produits ultra-transformés et les sucres cachés.
+* En grossesse : pas de viande, poisson ou œuf **cru ou peu cuit**, pas de fromage au lait cru, pas d'alcool.
         """)
 
-    with st.expander("🚶 Sport, marche et mouvement"):
+    with st.expander("🚶 Sport et marche"):
         st.markdown("""
 * **Marche 10 à 15 minutes après chaque repas** : très efficace contre les pics de glycémie.
-* Objectif : environ **150 minutes par semaine** d'activité modérée (marche rapide, vélo doux, natation).
-* **2 séances par semaine** de renforcement musculaire léger (le muscle consomme du sucre).
-* Évite de rester assise plus d'1 h d'affilée : lève-toi quelques minutes.
-* En grossesse : sport doux (marche, natation, yoga prénatal, aquagym). Évite les sports à chocs ou à risque de chute.
-* **Arrête et consulte** en cas de saignements, douleurs, contractions, perte de liquide, essoufflement anormal, vertiges.
-* Demande l'accord de ton médecin ou de ta sage-femme avant de commencer ou d'intensifier.
+* Objectif : environ **150 minutes par semaine** d'activité modérée, à adapter à tes douleurs et ta fatigue.
+* **2 séances par semaine** de renforcement musculaire léger.
+* Évite de rester assise plus d'1 h d'affilée.
+* Avec la fibromyalgie : **commence doucement, augmente progressivement**, alterne effort et repos.
+* En grossesse : sport doux (marche, natation, aquagym, yoga prénatal). **Arrête et consulte** en cas de saignements, douleurs, contractions, vertiges ou essoufflement anormal.
         """)
 
-    with st.expander("🧘 Kiné, périnée et récupération"):
+    with st.expander("🧘 Kiné et fibromyalgie"):
         st.markdown("""
-* **Kiné ou sage-femme** : séances de préparation à la naissance et de rééducation du **périnée** (souvent prises en charge, demande à ton médecin).
-* Exercices de respiration et d'étirements doux, utiles contre les maux de dos et les jambes lourdes.
-* Après l'accouchement : **rééducation périnéale** recommandée avant de reprendre le sport intensif.
-* **Sommeil** : 7 à 9 h par nuit. Un mauvais sommeil augmente la glycémie et la faim.
-* **Stress** : respiration, cohérence cardiaque 5 minutes, marche. Le stress fait monter la glycémie.
+* **Kiné** : séances régulières de mobilisation douce, d'étirements et de massage adapté aux zones douloureuses.
+* **Activité physique adaptée** : marche, vélo doux, natation ou balnéothérapie (l'eau chaude soulage souvent).
+* **Gestion de l'énergie** : fractionne tes activités, fais des pauses avant d'être épuisée, évite le « tout ou rien » les bons jours.
+* **Chaleur** : bouillotte, douche chaude ou bain pour détendre les muscles.
+* **Étirements et respiration** : 5 à 10 minutes par jour, cohérence cardiaque.
+* **Sommeil** : horaires réguliers, 7 à 9 h. Un mauvais sommeil augmente la douleur, la fatigue et la glycémie.
+* **Jours de crise** : réduis l'effort, reste active en douceur (courte marche, étirements) plutôt que de rester allongée toute la journée.
+* Parles-en à ton médecin ou ton kiné pour un programme adapté, surtout en grossesse.
         """)
 
     st.write("---")
-    st.write("### ✅ Mes conseils du jour : fait ou pas fait ?")
+    st.write("### ✅ Mes conseils : fait ou pas fait ?")
 
-    aujourdhui = str(date.today())
-    coches_sauvees = {}
+    c_date = st.date_input("🗓️ Jour à remplir", value=date.today(), max_value=date.today(), key="t4_chk_date")
+    jour_txt = str(c_date)
+
+    tous_jours = {}
     try:
         rep_c = supabase.table("config_grossesse").select("*").eq("id", 2).execute()
         if rep_c.data:
             cfg_c = rep_c.data[0]["config"]
             if isinstance(cfg_c, str):
                 cfg_c = json.loads(cfg_c)
-            if cfg_c.get("date") == aujourdhui:
-                coches_sauvees = cfg_c.get("items", {})
+            tous_jours = cfg_c.get("jours", {})
     except Exception:
-        coches_sauvees = {}
+        tous_jours = {}
+    coches_sauvees = tous_jours.get(jour_txt, {})
 
     groupes = {
         "🥗 Nutrition": [
@@ -664,16 +711,19 @@ with tab4:
             ("n4", "Féculents complets en portion modérée"),
             ("n5", "J'ai pris une collation équilibrée (fruit + protéines)"),
         ],
-        "🚶 Sport et mouvement": [
+        "🚶 Sport et marche": [
             ("s1", "Marche de 10 à 15 min après le repas"),
-            ("s2", "30 min d'activité modérée"),
+            ("s2", "Activité modérée adaptée à mes douleurs"),
             ("s3", "Renforcement musculaire léger (2 fois par semaine)"),
             ("s4", "Je me suis levée régulièrement (pas assise 1 h d'affilée)"),
         ],
-        "🧘 Kiné et récupération": [
-            ("k1", "Exercices de kiné ou de périnée"),
-            ("k2", "Étirements ou respiration 5 minutes"),
-            ("k3", "Bonne nuit de sommeil (7 à 9 h)"),
+        "🧘 Kiné et fibromyalgie": [
+            ("k1", "Séance de kiné ou exercices du kiné"),
+            ("k2", "Étirements doux 5 à 10 minutes"),
+            ("k3", "Chaleur (bouillotte, douche ou bain chaud)"),
+            ("k4", "J'ai fait des pauses et géré mon énergie"),
+            ("k5", "Respiration ou relaxation 5 minutes"),
+            ("k6", "Bonne nuit de sommeil (7 à 9 h)"),
         ],
         "💧 Autres": [
             ("a1", "J'ai bu environ 1,5 L d'eau"),
@@ -686,22 +736,30 @@ with tab4:
     for titre_groupe, items_groupe in groupes.items():
         st.write("**" + titre_groupe + "**")
         for cle, texte in items_groupe:
-            etat[cle] = st.checkbox(texte, value=bool(coches_sauvees.get(cle, False)), key="t4_chk_" + cle)
+            etat[cle] = st.checkbox(texte, value=bool(coches_sauvees.get(cle, False)), key="t4_chk_" + cle + "_" + jour_txt)
 
     nb_faits = sum(1 for v in etat.values() if v)
     nb_total = len(etat)
     st.progress(nb_faits / nb_total)
-    st.caption(str(nb_faits) + " conseil(s) faits sur " + str(nb_total) + " aujourd'hui")
+    st.caption(str(nb_faits) + " conseil(s) faits sur " + str(nb_total) + " le " + jour_txt)
 
-    if st.button("💾 Enregistrer mes cases du jour", key="t4_save_chk"):
+    if st.button("💾 Enregistrer mes cases", key="t4_save_chk"):
         try:
-            supabase.table("config_grossesse").upsert({"id": 2, "config": {"date": aujourdhui, "items": etat}}).execute()
-            st.success("🎉 Cases enregistrées pour aujourd'hui !")
+            tous_jours[jour_txt] = etat
+            supabase.table("config_grossesse").upsert({"id": 2, "config": {"jours": tous_jours}}).execute()
+            st.success("🎉 Cases enregistrées pour le " + jour_txt + " !")
+            redemarrer()
         except Exception as e:
             st.error("Erreur d'enregistrement : " + str(e))
 
-    st.caption("Ces conseils sont généraux. Ton médecin, ta sage-femme, ton kiné ou ta diététicienne les adaptent à ton cas.")
+    if tous_jours:
+        st.write("**📊 Mes derniers jours**")
+        lignes_h = []
+        for d_txt in sorted(tous_jours.keys(), reverse=True)[:14]:
+            lignes_h.append({"Date": d_txt, "Conseils faits": sum(1 for v in tous_jours[d_txt].values() if v), "Sur": nb_total})
+        st.dataframe(pd.DataFrame(lignes_h), use_container_width=True)
 
+    st.caption("Ces conseils sont généraux. Ton médecin, ta sage-femme, ton kiné ou ta diététicienne les adaptent à ton cas.")
 # --- TAB 5 : HISTORIQUE DIRECT ---
 with tab5:
     st.subheader("📜 Historique Général Cloud")
