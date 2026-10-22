@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import json
-import os
 from supabase import create_client, Client
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
-# --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS REES ---
+# --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS REELS ---
 SUPABASE_URL = "https://supabase.co"
 SUPABASE_KEY = "sb_publishable_VPYYOesD0T97zyl3V9b0Ng_VUXQ-lph"
 
@@ -17,14 +16,13 @@ def init_supabase() -> Client:
 
 supabase: Client = init_supabase()
 
-# --- ENTRÉE DIRECTE SANS CODE SÉCURISÉE PAR EMAIL ---
 st.title("Mon suivi Therapy : Traitement, SOPK, Fertilité & Pré-Diabète")
 
 def redemarrer():
     try: st.rerun()
     except: st.experimental_rerun()
 
-# --- SYSTÈME DE CHARGEMENT DEPUIS SUPABASE ---
+# --- SYSTÈME DE CHARGEMENT SÉCURISÉ ---
 def load_db_from_supabase(table_name, columns):
     try:
         response = supabase.table(table_name).select("*").execute()
@@ -40,89 +38,73 @@ def save_row_to_supabase(table_name, data_dict):
     try: supabase.table(table_name).insert(data_dict).execute()
     except Exception as e: st.error(f"Erreur de sauvegarde Cloud : {e}")
 
-# Chargement instantané des données de ton coffre-fort Supabase
+# Chargement sécurisé (renvoie des tableaux vides si la table vient d'être créée)
 history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
 cycle_df = load_db_from_supabase("cycle_temperature", ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
 rdv_df = load_db_from_supabase("rdv_medicaux", ["Date", "Heure", "Médecin / Spécialité", "Lieu", "Notes"])
-glyc_df_local = load_db_from_supabase("suivi_glycemie", ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale", "Petit-Déjeuner", "Déjeuner", "Dîner", "Dessert / Plaisir", "Grignotage / Encas", "Activité Physique", "Hydratation (Verres)", "Conseils & Alertes"])
+glyc_df_local = load_db_from_supabase("suivi_glycemie", ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale"])
 poids_df_local = load_db_from_supabase("suivi_poids", ["Date", "Poids (kg)", "Note", "Taille (cm)"])
 
+# Chargement sécurisé des médicaments
+meds = {}
 try:
     meds_response = supabase.table("medicaments").select("*").execute()
-    meds = {}
     if meds_response.data:
         for row in meds_response.data:
             if isinstance(row, dict) and "name" in row and "config" in row:
-                meds[row["name"]] = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
-except: meds = {}
+                config_data = row["config"]
+                meds[row["name"]] = json.loads(config_data) if isinstance(config_data, str) else config_data
+except:
+    meds = {}
 
+# Chargement sécurisé configuration grossesse
+poids_config = {}
 try:
     config_response = supabase.table("config_grossesse").select("*").execute()
-    poids_config = json.loads(config_response.data[0]["config"]) if config_response.data else {}
-except: poids_config = {}
-
-# --- ALERTE STOCKS FAIBLES ---
-alertes = [name for name, info in meds.items() if int(info.get("stock", 0)) <= 5]
-if alertes:
-    for med_alerte in alertes:
-        st.error(f"⚠️ **ALERTE STOCK FAIBLE** : Il reste seulement {meds[med_alerte]['stock']} comprimé(s) pour **{med_alerte}** !")
+    if config_response.data:
+        config_data = config_response.data[0]["config"] if isinstance(config_response.data, list) else config_response.data.get("config", "{}")
+        poids_config = json.loads(config_data) if isinstance(config_data, str) else config_data
+except:
+    poids_config = {}
 
 # --- MENU DE GAUCHE ---
 st.sidebar.header("⚙️ Configuration Globale")
 parcours_mode = st.sidebar.selectbox("🌸 Ton parcours actuel :", ["Suivi de Cycle & Essai Bébé", "Suivi de Grossesse Évolutif", "Parcours PMA (Procréation Médicalement Assistée)"], key="side_parcours_mode")
 
-with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=False):
+with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=True):
     med_mode = st.sidebar.radio("Action", ["Nouveau médicament", "Modifier un existant"], key="side_med_mode")
     current_med_name = ""
     default_stock = 30
     default_timing = "Début de repas"
-    default_m, default_mi, default_s = False, False, False
+    default_m, default_mi, default_s = True, False, True
     default_is_evo = False
     default_nb_cachet = 1
     default_dur1 = 7
     default_d2 = 2
     
     if med_mode == "Modifier un existant" and meds:
-        current_med_name = st.sidebar.selectbox("Choisir le médicament à modifier", list(meds.keys()), key="side_select_med")
+        current_med_name = st.sidebar.selectbox("Choisir le médicament", list(meds.keys()), key="side_select_med")
         info_m = meds[current_med_name]
         default_stock = int(info_m.get("stock", 30))
         default_timing = info_m.get("timing", "Début de repas")
-        default_m = info_m.get("prend_matin", False)
+        default_m = info_m.get("prend_matin", True)
         default_mi = info_m.get("prend_midi", False)
-        default_s = info_m.get("prend_soir", False)
+        default_s = info_m.get("prend_soir", True)
         default_is_evo = info_m.get("is_evolution", False)
-        
-        phases_list = info_m.get("phases", [])
-        if isinstance(phases_list, list) and len(phases_list) > 0:
-            default_nb_cachet = int(phases_list[0].get("dose", 1))
-            default_dur1 = int(phases_list[0].get("duration", 7))
-            if len(phases_list) > 1: default_d2 = int(phases_list[1].get("dose", 2))
-        elif isinstance(phases_list, dict):
-            default_nb_cachet = int(phases_list.get("dose", 1))
-            default_dur1 = int(phases_list.get("duration", 7))
 
-    med_name = st.sidebar.text_input("Nom du médicament", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name").strip()
-    stock_actuel = default_stock
-    if med_mode == "Modifier un existant":
-        action_stock = st.sidebar.radio("Mouvement de stock :", ["Ne pas toucher", "➕ Ajouter (Achat de boîte)", "➖ Enlever (Perte / Oubli)"], key="side_stock_action")
-        val_mouv = st.sidebar.number_input("Quantité de comprimés concernés :", min_value=0, value=0, key="side_stock_mouv_val")
-        if action_stock == "➕ Ajouter (Achat de boîte)": stock_actuel += val_mouv
-        elif action_stock == "➖ Enlever (Perte / Oubli)": stock_actuel = max(0, stock_actuel - val_mouv)
-    else: stock_actuel = st.sidebar.number_input("Stock initial (comprimés)", min_value=0, value=default_stock, key="side_med_stock_init")
-
-    timing = st.sidebar.selectbox("Moment lié au repas", ["Début de repas", "Milieu de repas", "Fin de repas"], index=["Début de repas", "Milieu de repas", "Fin de repas"].index(default_timing), key="side_med_timing")
-    st.sidebar.markdown("**Moments de prise conseillés :**")
+    med_name = st.sidebar.text_input("Nom du médicament (ex: Metformine)", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name").strip()
+    stock_actuel = st.sidebar.number_input("Stock de comprimés", min_value=0, value=default_stock, key="side_med_stock")
+    timing = st.sidebar.selectbox("Moment lié au repas", ["Début de repas", "Milieu de repas", "Fin de repas"], index=0, key="side_med_timing")
+    
+    st.sidebar.markdown("**Moments de prise :**")
     p_matin = st.sidebar.checkbox("🌅 Matin", value=default_m, key="side_p_matin")
     p_midi = st.sidebar.checkbox("☀️ Midi", value=default_mi, key="side_p_midi")
     p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir")
     
-    st.sidebar.markdown("---")
-    is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers de dose)", value=default_is_evo, key="side_is_evo_cb")
-    
+    is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers)", value=default_is_evo, key="side_is_evo_cb")
     if is_evolution:
-        st.sidebar.caption("⚙️ Configure ton protocole Metformine :")
         d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val")
-        dur1 = st.sidebar.number_input("Durée Palier 1 (en jours)", min_value=1, value=default_dur1, key="side_dur1_val")
+        dur1 = st.sidebar.number_input("Durée Palier 1 (jours)", min_value=1, value=default_dur1, key="side_dur1_val")
         d2 = st.sidebar.number_input("Dose Palier 2 (cachets final)", min_value=1, value=default_d2, key="side_d2_val")
         phases_save = [{"dose": int(d1), "duration": int(dur1)}, {"dose": int(d2), "duration": 9999}]
         nb_cachets_repas = int(d1)
@@ -137,21 +119,19 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=F
                 "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
             try:
-                supabase.table("medicaments").upsert({"name": med_name, "config": json.dumps(config_med)}).execute()
-                st.sidebar.success("🎉 Médicament enregistré sur Supabase !")
+                supabase.table("medicaments").upsert({"name": med_name, "config": config_med}).execute()
+                st.sidebar.success("🎉 Médicament verrouillé sur le Cloud !")
                 redemarrer()
-            except: pass
+            except Exception as e:
+                st.sidebar.error(f"Erreur : {e}")
 
 if meds:
-    with st.sidebar.expander("🗑️ Supprimer un Médicament", expanded=False):
+    with st.sidebar.expander("🗑️ Supprimer un Médicament"):
         med_to_delete = st.sidebar.selectbox("Choisir à supprimer", list(meds.keys()), key="side_del_med_select")
-        if st.sidebar.button("🚨 Confirmer la suppression", key="side_del_med_btn"):
-            try:
-                supabase.table("medicaments").delete().eq("name", med_to_delete).execute()
-                st.sidebar.success("🚨 Médicament supprimé !")
-                redemarrer()
-            except: pass
-                
+        if st.sidebar.button("🚨 Confirmer la suppression"):
+            supabase.table("medicaments").delete().eq("name", med_to_delete).execute()
+            redemarrer()
+
 # --- ONGLETS PRINCIPAUX ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections"])
 
