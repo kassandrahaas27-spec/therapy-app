@@ -179,6 +179,19 @@ with tab1:
                     st.warning("Décompte indisponible : " + str(e))
 
             st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir' if info.get('prend_soir') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
+            # --- STOCK + ALERTE DE RACHAT ---
+            stock_restant = int(info.get("stock", 0))
+            nb_moments = sum([1 if info.get("prend_matin") else 0, 1 if info.get("prend_midi") else 0, 1 if info.get("prend_soir") else 0])
+            conso_jour = max(1, nb_moments * dose_actuelle)
+            jours_stock = stock_restant // conso_jour
+            date_fin_stock = date.today() + timedelta(days=jours_stock)
+
+            if stock_restant == 0:
+                st.error("🚨 Stock épuisé ! Il faut racheter " + name + " tout de suite.")
+            elif jours_stock <= 7:
+                st.warning("⚠️ Presque vide : il reste " + str(stock_restant) + " comprimé(s), soit environ " + str(jours_stock) + " jour(s) (jusqu'au " + date_fin_stock.strftime("%d/%m/%Y") + "). Pense à racheter " + name + " et à demander le renouvellement de l'ordonnance.")
+            else:
+                st.caption("📦 Stock : " + str(stock_restant) + " comprimé(s), soit environ " + str(jours_stock) + " jour(s) (jusqu'au " + date_fin_stock.strftime("%d/%m/%Y") + ").")            
             col_m, col_mid, col_s = st.columns(3)
             matin_check, midi_check, soir_check = False, False, False
             with col_m:
