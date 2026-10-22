@@ -459,9 +459,9 @@ with tab3:
     rdv_place = st.text_input("🏢 Lieu / Adresse du RDV", placeholder="Clinique...", key="t3_place")
     if st.button("📌 Ajouter ce rendez-vous", key="t3_submit_direct"):
         row_r = {"Date": str(rdv_date), "Heure": rdv_time, "Médecin / Spécialité": rdv_doc, "Lieu": rdv_place, "Notes": ""}
-        save_row_to_supabase("rdv_medicaux", row_r)
-        st.success("🎉 Rendez-vous ajouté au Cloud !")
-        redemarrer()
+            if save_row_to_supabase("rdv_medicaux", row_r):
+                st.success("🎉 Rendez-vous ajouté au Cloud !")
+                redemarrer()
     if not rdv_df.empty: st.dataframe(rdv_df, use_container_width=True)
 
 # --- TAB 4 : SUIVI NUTRITION ---
