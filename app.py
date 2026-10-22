@@ -63,8 +63,8 @@ except:
 # Chargement sécurisé configuration grossesse
 poids_config = {}
 try:
-    config_response = supabase.table("config_grossesse").select("*").execute()
-    if config_response.data:
+    config_response = supabase.table("config_grossesse").select("*").eq("id", 1).execute()
+if config_response.data:
         config_data = config_response.data["config"] if isinstance(config_response.data, list) else config_response.data.get("config", "{}")
         poids_config = json.loads(config_data) if isinstance(config_data, str) else config_data
 except:
@@ -587,8 +587,121 @@ with tab4:
 
     st.write("---")
 
-    # ---------- NUTRITION ----------
-    st.write("### 🍽️ Conseils nutrition
+    # ---------- NUTRITION, SPORT & SUIVI DES CONSEILS ----------
+    st.write("### 🩸 Quand faire ma glycémie ?")
+    with st.expander("📅 Repères pré-diabète et grossesse", expanded=True):
+        st.markdown("""
+**En pré-diabète (hors grossesse)**
+* En général, pas besoin de se piquer tous les jours, sauf si ton médecin te le demande.
+* Prise de sang à jeun et HbA1c : le plus souvent **1 fois par an**, ou tous les 3 à 6 mois si ton médecin le décide (surtout après un changement de traitement ou de poids).
+* Si tu fais des contrôles à la maison : **le matin à jeun**, ou **2 h après le début du repas**, jamais juste après avoir mangé.
+* Repère habituel à jeun : moins de 1,00 g/L. Entre 1,00 et 1,25 g/L, on parle de pré-diabète. À partir de 1,26 g/L (confirmé), c'est un diabète.
+
+**Si tu es enceinte (SOPK et pré-diabète = facteurs de risque)**
+* Une glycémie à jeun est souvent demandée **dès le début de grossesse**.
+* Le test de dépistage **HGPO (boisson sucrée)** se fait entre **24 et 28 SA**. Ton médecin peut le proposer plus tôt.
+* Si un diabète gestationnel est confirmé : mesures **à jeun** et **1 h ou 2 h après les repas**, selon la consigne de ton équipe.
+* Objectifs fréquents en grossesse : à jeun moins de 0,95 g/L, 2 h après repas moins de 1,20 g/L.
+
+**À noter dans l'appli et à montrer à ton médecin :** toutes tes mesures, avec le moment (à jeun ou après repas).
+
+**Quand consulter sans attendre :** soif intense, urines très fréquentes, fatigue inhabituelle, vision floue, ou glycémie très élevée.
+        """)
+        st.caption("Repères généraux : ton médecin ou ta sage-femme fixent tes objectifs personnels.")
+
+    with st.expander("🥦 Conseils nutrition (SOPK et résistance à l insuline)"):
+        st.markdown("""
+* Commence le repas par les **légumes** et les fibres, puis les protéines, puis les féculents.
+* **3 repas réguliers**, sans sauter de repas. Collation si besoin.
+* Féculents **complets** en portion modérée (riz complet, lentilles, pois chiches, pain complet).
+* Évite les boissons sucrées et les jus : bois de l'**eau** (1,5 L par jour).
+* Associe toujours un aliment sucré à des protéines ou des fibres (fruit + amandes, yaourt + fruits rouges).
+* Limite les produits ultra-transformés, pâtisseries et sucres cachés.
+* En grossesse : pas de viande, poisson ou œuf **cru ou peu cuit**, pas de fromage au lait cru, lave bien les légumes, pas d'alcool.
+        """)
+
+    with st.expander("🚶 Sport, marche et mouvement"):
+        st.markdown("""
+* **Marche 10 à 15 minutes après chaque repas** : très efficace contre les pics de glycémie.
+* Objectif : environ **150 minutes par semaine** d'activité modérée (marche rapide, vélo doux, natation).
+* **2 séances par semaine** de renforcement musculaire léger (le muscle consomme du sucre).
+* Évite de rester assise plus d'1 h d'affilée : lève-toi quelques minutes.
+* En grossesse : sport doux (marche, natation, yoga prénatal, aquagym). Évite les sports à chocs ou à risque de chute.
+* **Arrête et consulte** en cas de saignements, douleurs, contractions, perte de liquide, essoufflement anormal, vertiges.
+* Demande l'accord de ton médecin ou de ta sage-femme avant de commencer ou d'intensifier.
+        """)
+
+    with st.expander("🧘 Kiné, périnée et récupération"):
+        st.markdown("""
+* **Kiné ou sage-femme** : séances de préparation à la naissance et de rééducation du **périnée** (souvent prises en charge, demande à ton médecin).
+* Exercices de respiration et d'étirements doux, utiles contre les maux de dos et les jambes lourdes.
+* Après l'accouchement : **rééducation périnéale** recommandée avant de reprendre le sport intensif.
+* **Sommeil** : 7 à 9 h par nuit. Un mauvais sommeil augmente la glycémie et la faim.
+* **Stress** : respiration, cohérence cardiaque 5 minutes, marche. Le stress fait monter la glycémie.
+        """)
+
+    st.write("---")
+    st.write("### ✅ Mes conseils du jour : fait ou pas fait ?")
+
+    aujourdhui = str(date.today())
+    coches_sauvees = {}
+    try:
+        rep_c = supabase.table("config_grossesse").select("*").eq("id", 2).execute()
+        if rep_c.data:
+            cfg_c = rep_c.data[0]["config"]
+            if isinstance(cfg_c, str):
+                cfg_c = json.loads(cfg_c)
+            if cfg_c.get("date") == aujourdhui:
+                coches_sauvees = cfg_c.get("items", {})
+    except Exception:
+        coches_sauvees = {}
+
+    groupes = {
+        "🥗 Nutrition": [
+            ("n1", "J'ai commencé mes repas par les légumes"),
+            ("n2", "J'ai fait 3 repas réguliers"),
+            ("n3", "Pas de boisson sucrée aujourd'hui"),
+            ("n4", "Féculents complets en portion modérée"),
+            ("n5", "J'ai pris une collation équilibrée (fruit + protéines)"),
+        ],
+        "🚶 Sport et mouvement": [
+            ("s1", "Marche de 10 à 15 min après le repas"),
+            ("s2", "30 min d'activité modérée"),
+            ("s3", "Renforcement musculaire léger (2 fois par semaine)"),
+            ("s4", "Je me suis levée régulièrement (pas assise 1 h d'affilée)"),
+        ],
+        "🧘 Kiné et récupération": [
+            ("k1", "Exercices de kiné ou de périnée"),
+            ("k2", "Étirements ou respiration 5 minutes"),
+            ("k3", "Bonne nuit de sommeil (7 à 9 h)"),
+        ],
+        "💧 Autres": [
+            ("a1", "J'ai bu environ 1,5 L d'eau"),
+            ("a2", "J'ai mesuré ma glycémie (si demandé par mon médecin)"),
+            ("a3", "J'ai pris mon traitement et mes vitamines prescrites"),
+        ],
+    }
+
+    etat = {}
+    for titre_groupe, items_groupe in groupes.items():
+        st.write("**" + titre_groupe + "**")
+        for cle, texte in items_groupe:
+            etat[cle] = st.checkbox(texte, value=bool(coches_sauvees.get(cle, False)), key="t4_chk_" + cle)
+
+    nb_faits = sum(1 for v in etat.values() if v)
+    nb_total = len(etat)
+    st.progress(nb_faits / nb_total)
+    st.caption(str(nb_faits) + " conseil(s) faits sur " + str(nb_total) + " aujourd'hui")
+
+    if st.button("💾 Enregistrer mes cases du jour", key="t4_save_chk"):
+        try:
+            supabase.table("config_grossesse").upsert({"id": 2, "config": {"date": aujourdhui, "items": etat}}).execute()
+            st.success("🎉 Cases enregistrées pour aujourd'hui !")
+        except Exception as e:
+            st.error("Erreur d'enregistrement : " + str(e))
+
+    st.caption("Ces conseils sont généraux. Ton médecin, ta sage-femme, ton kiné ou ta diététicienne les adaptent à ton cas.")
+
 # --- TAB 5 : HISTORIQUE DIRECT ---
 with tab5:
     st.subheader("📜 Historique Général Cloud")
