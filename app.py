@@ -525,7 +525,54 @@ with tab3:
 # --- TAB 4 : SUIVI NUTRITION ---
 with tab4:
     st.subheader("🥗 Mon Suivi Métabolique")
+    # ---------- STOCK MATÉRIEL GLYCÉMIE ----------
+    st.write("### 🧰 Mon matériel de glycémie")
+    materiel = {"bandelettes": 0, "aiguilles": 0, "seuil": 10}
+    try:
+        rep_mat = supabase.table("config_grossesse").select("*").eq("id", 3).execute()
+        if rep_mat.data:
+            cfg_mat = rep_mat.data[0]["config"]
+            if isinstance(cfg_mat, str):
+                cfg_mat = json.loads(cfg_mat)
+            materiel.update(cfg_mat)
+    except Exception:
+        pass
 
+    nb_bandelettes = int(materiel.get("bandelettes", 0))
+    nb_aiguilles = int(materiel.get("aiguilles", 0))
+    seuil_mat = int(materiel.get("seuil", 10))
+
+    if nb_bandelettes == 0:
+        st.error("🚨 Plus de bandelettes ! Il faut en racheter tout de suite.")
+    elif nb_bandelettes <= seuil_mat:
+        st.warning("⚠️ Bandelettes presque épuisées : il en reste " + str(nb_bandelettes) + ". Pense à en racheter (ordonnance à renouveler si besoin).")
+    else:
+        st.success("📦 Bandelettes : " + str(nb_bandelettes) + " restantes.")
+
+    if nb_aiguilles == 0:
+        st.error("🚨 Plus d'aiguilles (lancettes) ! Il faut en racheter tout de suite.")
+    elif nb_aiguilles <= seuil_mat:
+        st.warning("⚠️ Aiguilles presque épuisées : il en reste " + str(nb_aiguilles) + ". Pense à en racheter.")
+    else:
+        st.success("📦 Aiguilles : " + str(nb_aiguilles) + " restantes.")
+
+    with st.expander("✏️ Modifier mon stock de matériel"):
+        cm1, cm2, cm3 = st.columns(3)
+        with cm1:
+            new_band = st.number_input("Bandelettes", min_value=0, value=nb_bandelettes, step=1, key="t4_mat_band_" + str(nb_bandelettes))
+        with cm2:
+            new_aig = st.number_input("Aiguilles", min_value=0, value=nb_aiguilles, step=1, key="t4_mat_aig_" + str(nb_aiguilles))
+        with cm3:
+            new_seuil = st.number_input("Alerte quand il reste", min_value=1, value=seuil_mat, step=1, key="t4_mat_seuil_" + str(seuil_mat))
+        if st.button("💾 Enregistrer mon matériel", key="t4_save_materiel"):
+            try:
+                supabase.table("config_grossesse").upsert({"id": 3, "config": {"bandelettes": int(new_band), "aiguilles": int(new_aig), "seuil": int(new_seuil)}}).execute()
+                st.success("🎉 Matériel enregistré !")
+                redemarrer()
+            except Exception as e:
+                st.error("Erreur d'enregistrement : " + str(e))
+
+    st.write("---")
     # ---------- GLYCÉMIE ----------
     st.write("### 🩸 Ma glycémie")
     enceinte = st.checkbox("🤰 Je suis enceinte (objectifs de grossesse)", value=(parcours_mode == "Suivi de Grossesse Évolutif"), key="t4_enceinte")
@@ -575,6 +622,12 @@ with tab4:
             "Repas mangé": repas_mange
         }
         if save_row_to_supabase("suivi_glycemie", row_g):
+            try:
+                materiel["bandelettes"] = max(0, nb_bandelettes - 1)
+                materiel["aiguilles"] = max(0, nb_aiguilles - 1)
+                supabase.table("config_grossesse").upsert({"id": 3, "config": materiel}).execute()
+            except Exception:
+                pass
             st.success("🎉 Taux enregistré !")
             redemarrer()
 
