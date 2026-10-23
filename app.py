@@ -567,7 +567,14 @@ with tab4:
         repas_mange = st.text_input("🍽️ Qu'as-tu mangé à ce repas ? (pour comprendre ce qui fait monter)", key="t4_g_repas")
     if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
         txt_g = str(glyc_val) + " g/L"
-        row_g = {"Date": str(g_date), "Glycémie à jeun": txt_g if a_jeun else "-", "Glycémie Post-Prandiale": "-" if a_jeun else txt_g, "Moment": glyc_mode, "Repas mangé": repas_mange}        if save_row_to_supabase("suivi_glycemie", row_g):
+        row_g = {
+            "Date": str(g_date),
+            "Glycémie à jeun": txt_g if a_jeun else "-",
+            "Glycémie Post-Prandiale": "-" if a_jeun else txt_g,
+            "Moment": glyc_mode,
+            "Repas mangé": repas_mange
+        }
+        if save_row_to_supabase("suivi_glycemie", row_g):
             st.success("🎉 Taux enregistré !")
             redemarrer()
 
