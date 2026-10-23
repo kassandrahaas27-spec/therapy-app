@@ -534,8 +534,7 @@ with tab4:
     with cg1:
         glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=6.0, value=0.95, step=0.01, key="t4_g_val")
     with cg2:
-        glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le repas"], key="t4_g_moment")
-
+        glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le petit-déjeuner", "2h après le déjeuner", "2h après le dîner"], key="t4_g_moment")
     a_jeun = (glyc_mode == "Matin à jeun")
     if glyc_val < 0.70:
         st.error("🔻 Glycémie basse (hypoglycémie). Prends tout de suite 15 g de sucre (3 morceaux de sucre ou un demi-verre de jus), assieds-toi, puis recontrôle dans 15 minutes. Si elle reste basse ou si tu as des malaises (sueurs, tremblements, confusion), appelle ton médecin ou le 15.")
@@ -562,11 +561,13 @@ with tab4:
         else:
             st.error("🛑 Valeur très élevée après repas. Hydrate-toi, évite tout sucre, refais un contrôle dans 1 heure. Contacte ton médecin dans la journée. En cas de malaise, soif intense ou vomissements, appelle le 15.")
     st.caption("Repères indicatifs, je ne remplace pas un médecin. Ton équipe médicale fixe tes objectifs personnels.")
-
+    repas_mange = ""
+    seuil_repas = 1.20 if enceinte else 1.40
+    if (not a_jeun) and glyc_val >= seuil_repas:
+        repas_mange = st.text_input("🍽️ Qu'as-tu mangé à ce repas ? (pour comprendre ce qui fait monter)", key="t4_g_repas")
     if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
         txt_g = str(glyc_val) + " g/L"
-        row_g = {"Date": str(g_date), "Glycémie à jeun": txt_g if a_jeun else "-", "Glycémie Post-Prandiale": "-" if a_jeun else txt_g}
-        if save_row_to_supabase("suivi_glycemie", row_g):
+        row_g = {"Date": str(g_date), "Glycémie à jeun": txt_g if a_jeun else "-", "Glycémie Post-Prandiale": "-" if a_jeun else txt_g, "Moment": glyc_mode, "Repas mangé": repas_mange}        if save_row_to_supabase("suivi_glycemie", row_g):
             st.success("🎉 Taux enregistré !")
             redemarrer()
 
