@@ -43,6 +43,53 @@ def save_row_to_supabase(table_name, data_dict):
         st.error(f"Erreur de sauvegarde Cloud ({table_name}) : {e}")
         return False
 
+# --- NOUVEAU : tableau modifiable (utilisé dans l'onglet Historique) ---
+def editeur_table(df, table_name, key):
+    """Tableau modifiable : clique sur une case, change la valeur, puis enregistre."""
+    if df.empty or "id" not in df.columns:
+        st.dataframe(df, use_container_width=True)
+        return
+    df = df.reset_index(drop=True)
+    non_editables = [c for c in ["id", "created_at"] if c in df.columns]
+    st.caption("✏️ Clique sur une case pour la modifier (dates au format AAAA-MM-JJ), puis enregistre.")
+    edite = st.data_editor(df, key=key + "_" + str(len(df)), hide_index=True, disabled=non_editables, use_container_width=True, num_rows="fixed")
+    if st.button("💾 Enregistrer les modifications", key=key + "_btn"):
+        nb = 0
+        for i in range(len(df)):
+            changements = {}
+            for c in df.columns:
+                if c in non_editables:
+                    continue
+                if str(df.at[i, c]) != str(edite.at[i, c]):
+                    v = edite.at[i, c]
+                    if pd.isna(v):
+                        v = None
+                    elif hasattr(v, "item"):
+                        v = v.item()
+                    changements[c] = v
+            if changements:
+                try:
+                    supabase.table(table_name).update(changements).eq("id", int(df.at[i, "id"])).execute()
+                    nb += 1
+                except Exception as e:
+                    st.error("Erreur de modification : " + str(e))
+        if nb > 0:
+            st.toast("🎉 " + str(nb) + " ligne(s) modifiée(s) !")
+            redemarrer()
+        else:
+            st.info("Aucune modification détectée.")
+
+# --- NOUVEAU : modifier le stock d'un médicament ---
+def maj_stock(nom, config, nouveau_stock):
+    config = dict(config)
+    config["stock"] = max(0, int(nouveau_stock))
+    try:
+        supabase.table("medicaments").upsert({"name": nom, "config": config}).execute()
+    except Exception as e:
+        st.error("Erreur : " + str(e))
+        return
+    redemarrer()
+
 # Chargement sécurisé depuis Supabase
 history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
 cycle_df = load_db_from_supabase("cycle_temperature", ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
@@ -152,6 +199,14 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi 
 with tab1:
     st.subheader("📅 Prises du jour & Vos Symptômes")
     st.caption(f"Mode actif : **{parcours_mode}**")
+
+    # NOUVEAU : choix du jour à enregistrer (en cas d'oubli)
+    date_saisie = st.date_input("🗓️ Jour à enregistrer (tu peux revenir en arrière si tu as oublié)", value=date.today(), max_value=date.today(), key="t1_date_saisie")
+    deja_saisi = []
+    if not history_df.empty and "Date" in history_df.columns:
+        deja_saisi = sorted(set(history_df[history_df["Date"] == str(date_saisie)]["Médicament"].tolist()))
+    if deja_saisi:
+        st.info("ℹ️ Il y a déjà des prises enregistrées le " + str(date_saisie) + " pour : " + ", ".join(deja_saisi) + ". Coche seulement ce qui n'est pas encore enregistré (ou corrige dans l'onglet Historique).")
     
     if not meds:
         st.info("Ajoute un médicament dans le menu à gauche pour commencer.")
@@ -200,15 +255,28 @@ with tab1:
             elif jours_stock <= 7:
                 st.warning("⚠️ Presque vide : il reste " + str(stock_restant) + " comprimé(s), soit environ " + str(jours_stock) + " jour(s) (jusqu'au " + date_fin_stock.strftime("%d/%m/%Y") + "). Pense à racheter " + name + " et à demander le renouvellement de l'ordonnance.")
             else:
-                st.caption("📦 Stock : " + str(stock_restant) + " comprimé(s), soit environ " + str(jours_stock) + " jour(s) (jusqu'au " + date_fin_stock.strftime("%d/%m/%Y") + ").")            
+                st.caption("📦 Stock : " + str(stock_restant) + " comprimé(s), soit environ " + str(jours_stock) + " jour(s) (jusqu'au " + date_fin_stock.strftime("%d/%m/%Y") + ").")
+
+            # NOUVEAU : modifier le stock facilement
+            with st.expander("📦 Modifier le stock de " + name):
+                cs1, cs2 = st.columns(2)
+                with cs1:
+                    stock_exact = st.number_input("Stock exact (comprimés)", min_value=0, value=stock_restant, step=1, key=f"stock_set_{name}_{stock_restant}")
+                    if st.button("✏️ Corriger le stock", key=f"stock_set_btn_{name}"):
+                        maj_stock(name, info, int(stock_exact))
+                with cs2:
+                    stock_ajout = st.number_input("Ajouter (boîte rachetée)", min_value=0, value=0, step=1, key=f"stock_add_{name}_{stock_restant}")
+                    if st.button("➕ Ajouter au stock", key=f"stock_add_btn_{name}"):
+                        maj_stock(name, info, stock_restant + int(stock_ajout))
+
             col_m, col_mid, col_s = st.columns(3)
             matin_check, midi_check, soir_check = False, False, False
             with col_m:
-                if info.get("prend_matin", True): matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_unique_key_securisee")
+                if info.get("prend_matin", True): matin_check = st.checkbox("🌅 Pris le Matin", key=f"t1_{name}_matin_{date_saisie}")
             with col_mid:
-                if info.get("prend_midi", False): midi_check = st.checkbox("☀️ Pris le Midi", key=f"t1_{name}_midi_unique_key_securisee")
+                if info.get("prend_midi", False): midi_check = st.checkbox("☀️ Pris le Midi", key=f"t1_{name}_midi_{date_saisie}")
             with col_s:
-                if info.get("prend_soir", True): soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soir_unique_key_securisee")
+                if info.get("prend_soir", True): soir_check = st.checkbox("🌙 Pris le Soir", key=f"t1_{name}_soir_{date_saisie}")
 
             prises_details[name] = {"Matin": matin_check, "Midi": midi_check, "Soir": soir_check, "dose_unitaire": dose_actuelle}
             st.write("---")
@@ -219,15 +287,15 @@ with tab1:
         c_m1, c_m2 = st.columns(2)
         for idx, s in enumerate(liste_symp_med):
             with c_m1 if idx % 2 == 0 else c_m2:
-                if st.checkbox(s, key=f"t1_med_symptome_{s}_unique_key"): symp_med_choisis.append(s)
+                if st.checkbox(s, key=f"t1_med_symptome_{s}_{date_saisie}"): symp_med_choisis.append(s)
                 
         st.write("### 🌸 2. Symptômes liés au Cycle, SOPK & Glycémie")
         symp_cycle_choisis = []
         liste_symp_cycle = ["Coup de barre (Après repas)", "Envie de sucre subite", "Maux de tête / Migraine", "Crampes pelviennes / Ovaires", "Poussée d'acné", "Sauts d'humeur / Irritabilité", "Seins douloureux", "Rétention d'eau"]
         for idx, s in enumerate(liste_symp_cycle):
-            if st.checkbox(s, key=f"t1_cycle_symptome_{s}_unique_key"): symp_cycle_choisis.append(s)
+            if st.checkbox(s, key=f"t1_cycle_symptome_{s}_{date_saisie}"): symp_cycle_choisis.append(s)
 
-        note_jour = st.text_input("Notes libres sur ta journée", placeholder="RAS", key="t1_note_libre_validation_unique")
+        note_jour = st.text_input("Notes libres sur ta journée", placeholder="RAS", key=f"t1_note_libre_{date_saisie}")
         
         if st.button("✅ Enregistrer ma journée", key="t1_submit_bouton_validation_final_unique"):
             for name, moments in prises_details.items():
@@ -236,10 +304,11 @@ with tab1:
                     total_de_cachets_pris = len(moments_cochés) * moments["dose_unitaire"]
                     txt_prise = ", ".join(moments_cochés) + f" ({total_de_cachets_pris} cachet(s))"
                 else:
+                    total_de_cachets_pris = 0
                     txt_prise = "Aucune"
                 
                 row_data = {
-                    "Date": str(date.today()), "Médicament": name, "Prise": txt_prise, "Moment Repas": meds[name]["timing"], 
+                    "Date": str(date_saisie), "Médicament": name, "Prise": txt_prise, "Moment Repas": meds[name]["timing"], 
                     "Symptômes Traitement": ", ".join(symp_med_choisis) if symp_med_choisis else "Aucun",
                     "Symptômes SOPK/Pré-Diabète": ", ".join(symp_cycle_choisis) if symp_cycle_choisis else "Aucun", "Note": note_jour
                 }
@@ -510,7 +579,38 @@ with tab3:
             st.success("🎉 Rendez-vous ajouté au Cloud !")
             redemarrer()
     if not rdv_df.empty:
-        st.dataframe(rdv_df, use_container_width=True)
+        # NOUVEAU : statut + compte-rendu
+        rdv_aff = rdv_df.copy()
+        if "Statut" not in rdv_aff.columns:
+            rdv_aff["Statut"] = "À venir"
+        rdv_aff["Statut"] = rdv_aff["Statut"].fillna("À venir").replace("", "À venir")
+        if "Compte-rendu" not in rdv_aff.columns:
+            rdv_aff["Compte-rendu"] = ""
+        rdv_aff = rdv_aff.sort_values(by="Date").reset_index(drop=True)
+        st.dataframe(rdv_aff, use_container_width=True)
+
+        st.write("**✅ Mon rendez-vous a eu lieu ?**")
+        if "id" in rdv_aff.columns:
+            a_valider = rdv_aff[rdv_aff["Statut"] != "✅ Effectué"]
+            if a_valider.empty:
+                st.caption("Tous tes rendez-vous sont marqués comme effectués.")
+            else:
+                opts_v = {f"{r['Date']} - {r['Médecin / Spécialité']} (n°{r['id']})": r["id"] for _, r in a_valider.iterrows()}
+                v_choisi = st.selectbox("Quel rendez-vous ?", list(opts_v.keys()), key="t3_done_select")
+                id_v = opts_v[v_choisi]
+                eu_lieu = st.checkbox("✅ Le rendez-vous a eu lieu", key=f"t3_eu_lieu_{id_v}")
+                compte_rendu = st.text_area("📝 Comment ça s'est passé ? (ce que le médecin a dit, examens, ordonnance, prochain RDV...)", key=f"t3_cr_{id_v}")
+                if st.button("💾 Enregistrer le compte-rendu", key="t3_done_btn"):
+                    if not eu_lieu:
+                        st.warning("Coche d'abord « Le rendez-vous a eu lieu ».")
+                    else:
+                        try:
+                            supabase.table("rdv_medicaux").update({"Statut": "✅ Effectué", "Compte-rendu": compte_rendu}).eq("id", int(id_v)).execute()
+                            st.success("Rendez-vous marqué comme effectué !")
+                            redemarrer()
+                        except Exception as e:
+                            st.error("Erreur : " + str(e))
+
         st.write("**🗑️ Supprimer un rendez-vous**")
         options_rdv = {f"{r['Date']} - {r['Médecin / Spécialité']} (n°{r['id']})": r['id'] for _, r in rdv_df.iterrows()}
         rdv_choisi = st.selectbox("Choisir le rendez-vous à supprimer", list(options_rdv.keys()), key="t3_del_select")
@@ -608,6 +708,40 @@ with tab4:
         else:
             st.error("🛑 Valeur très élevée après repas. Hydrate-toi, évite tout sucre, refais un contrôle dans 1 heure. Contacte ton médecin dans la journée. En cas de malaise, soif intense ou vomissements, appelle le 15.")
     st.caption("Repères indicatifs, je ne remplace pas un médecin. Ton équipe médicale fixe tes objectifs personnels.")
+
+    # NOUVEAU : seuils, malaise et contrôle de vérification
+    seuil_haut = (0.95 if enceinte else 1.00) if a_jeun else (1.20 if enceinte else 1.40)
+    taux_eleve = glyc_val >= seuil_haut
+    taux_bas = glyc_val < 0.70
+
+    malaise = st.checkbox("🤒 Je ne me sens pas bien", key="t4_malaise")
+    symptomes_malaise = []
+    if malaise:
+        symptomes_malaise = st.multiselect("Qu'est-ce que tu ressens ?", ["Soif intense", "Sueurs / tremblements", "Vertiges", "Nausées / vomissements", "Fatigue inhabituelle", "Vision floue", "Maux de tête", "Confusion", "Respiration inhabituelle"], key="t4_malaise_symp")
+        st.warning("Préviens ton médecin ou ta sage-femme aujourd'hui. En cas de confusion, vomissements, soif intense, respiration inhabituelle ou malaise important : appelle le 15.")
+
+    refait = False
+    glyc_ctrl = glyc_val
+    delai_ctrl = ""
+    if taux_eleve or taux_bas or malaise:
+        st.write("#### 🔁 Contrôle de vérification")
+        st.caption("Lave-toi et sèche-toi bien les mains, puis refais une mesure sur un autre doigt.")
+        refait = st.checkbox("J'ai refait un contrôle", key="t4_refait")
+        if refait:
+            cv1, cv2 = st.columns(2)
+            with cv1:
+                glyc_ctrl = st.number_input("Valeur du contrôle (g/L)", min_value=0.0, max_value=6.0, value=float(glyc_val), step=0.01, key="t4_ctrl_val")
+            with cv2:
+                delai_ctrl = st.selectbox("Délai après la 1re mesure", ["Tout de suite", "15 minutes", "1 heure", "2 heures"], key="t4_ctrl_delai")
+            if glyc_ctrl < 0.70:
+                st.error("🔻 Toujours basse : reprends 15 g de sucre et recontrôle dans 15 min. Si ça ne remonte pas, appelle le 15.")
+            elif taux_bas:
+                st.success("✅ Ta glycémie est remontée. Mange une collation avec des féculents et surveille-toi.")
+            elif glyc_ctrl >= seuil_haut:
+                st.error("🛑 Valeur élevée confirmée. Contacte ton médecin dans la journée (ta sage-femme si tu es enceinte).")
+            else:
+                st.success("✅ Le contrôle est dans les repères : la 1re mesure était peut-être faussée (mains sales ou sucrées). Garde les deux valeurs et surveille.")
+
     repas_mange = ""
     seuil_repas = 1.20 if enceinte else 1.40
     if (not a_jeun) and glyc_val >= seuil_repas:
@@ -619,12 +753,16 @@ with tab4:
             "Glycémie à jeun": txt_g if a_jeun else "-",
             "Glycémie Post-Prandiale": "-" if a_jeun else txt_g,
             "Moment": glyc_mode,
-            "Repas mangé": repas_mange
+            "Repas mangé": repas_mange,
+            "Contrôle de vérification": (str(glyc_ctrl) + " g/L (" + delai_ctrl + ")") if refait else "",
+            "Malaise": "Oui" if malaise else "Non",
+            "Symptômes Malaise": ", ".join(symptomes_malaise)
         }
         if save_row_to_supabase("suivi_glycemie", row_g):
             try:
-                materiel["bandelettes"] = max(0, nb_bandelettes - 1)
-                materiel["aiguilles"] = max(0, nb_aiguilles - 1)
+                nb_conso = 2 if refait else 1
+                materiel["bandelettes"] = max(0, nb_bandelettes - nb_conso)
+                materiel["aiguilles"] = max(0, nb_aiguilles - nb_conso)
                 supabase.table("config_grossesse").upsert({"id": 3, "config": materiel}).execute()
             except Exception:
                 pass
@@ -860,7 +998,7 @@ with tab5:
     st.subheader("📜 Historique Général Cloud")
     st.write("**Mon journal de bord des prises du jour :**")
     if not history_df.empty:
-        st.dataframe(history_df, use_container_width=True)
+        editeur_table(history_df, "historique_prises", "ed_hist")
         if "id" in history_df.columns:
             opts_h = {}
             for _, r in history_df.iterrows():
@@ -879,7 +1017,7 @@ with tab5:
     st.write("---")
     st.write("**Mon historique des températures :**")
     if not cycle_df.empty:
-        st.dataframe(cycle_df, use_container_width=True)
+        editeur_table(cycle_df, "cycle_temperature", "ed_cycle")
         if "id" in cycle_df.columns:
             opts_t = {}
             for _, r in cycle_df.iterrows():
@@ -894,3 +1032,16 @@ with tab5:
                     st.error("Erreur de suppression : " + str(e))
     else:
         st.caption("Aucune température enregistrée dans le Cloud pour le moment.")
+
+    # NOUVEAU : glycémie, poids et rendez-vous modifiables
+    st.write("---")
+    st.write("**Mon historique de glycémie (modifiable) :**")
+    editeur_table(glyc_df_local, "suivi_glycemie", "ed_glyc")
+
+    st.write("---")
+    st.write("**Mon historique de poids (modifiable) :**")
+    editeur_table(poids_df_local, "suivi_poids", "ed_poids")
+
+    st.write("---")
+    st.write("**Mes rendez-vous (modifiables, compte-rendu inclus) :**")
+    editeur_table(rdv_df, "rdv_medicaux", "ed_rdv")
