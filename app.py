@@ -869,7 +869,14 @@ with tab4:
 
     imc = poids_val / ((taille_val / 100) ** 2)
     st.caption("IMC pour ce poids : " + str(round(imc, 1)))
-    note_poids = st.text_input("Note (facultatif)", key="t4_poids_note")
+    contexte_poids = st.multiselect("Contexte de la pesée (pour comprendre les variations)", ["Avant / pendant les règles", "Rétention d'eau (jambes, mains, ventre gonflés)", "Repas salé ou restaurant la veille", "Mal dormi", "Traitement oublié", "Constipation", "Après un écart alimentaire"], key="t4_poids_ctx")
+    note_poids_libre = st.text_input("Note (facultatif)", key="t4_poids_note")
+    parts_note = []
+    if contexte_poids:
+        parts_note.append(", ".join(contexte_poids))
+    if note_poids_libre:
+        parts_note.append(note_poids_libre)
+    note_poids = " | ".join(parts_note)
 
     if st.button("💾 Sauvegarder ma pesée", key="t4_submit_poids"):
         row_p = {"Date": str(p_date), "Poids (kg)": poids_val, "Note": note_poids, "Taille (cm)": int(taille_val)}
@@ -891,10 +898,35 @@ with tab4:
         st.caption("Départ : pesée du " + str(p_df["Date"].iloc[0]) + ". Dernière pesée : " + str(p_df["Date"].iloc[-1]) + ".")
 
         import altair as alt
-        graphique_poids = alt.Chart(p_df).mark_line(point=True, color="#e377c2").encode(
-            x=alt.X("Date:T", title="Date"), y=alt.Y("Poids (kg):Q", scale=alt.Scale(zero=False))
-        ).properties(width=450, height=200)
+        p_df["Date_dt"] = pd.to_datetime(p_df["Date"])
+        p_df["Moyenne 7 jours"] = p_df.set_index("Date_dt")["Poids (kg)"].rolling("7D").mean().round(2).values
+
+        # --- Alerte si prise de poids rapide ---
+        date_derniere = p_df["Date_dt"].iloc[-1]
+        alertes_poids = []
+        for jours_fen, seuil_fen in [(7, 1.5), (14, 2.0)]:
+            ancien = p_df[p_df["Date_dt"] <= date_derniere - timedelta(days=jours_fen)]
+            if not ancien.empty:
+                diff_fen = poids_actuel - float(ancien["Poids (kg)"].iloc[-1])
+                if diff_fen >= seuil_fen:
+                    alertes_poids.append((jours_fen, diff_fen))
+        if alertes_poids:
+            jours_a, diff_a = alertes_poids[-1]
+            st.warning("📈 Tu as pris environ " + str(round(diff_a, 1)) + " kg en " + str(jours_a) + " jours. Ce n'est pas un échec : le poids varie beaucoup avec l'eau, le sel, le cycle, le sommeil, un traitement oublié ou la résistance à l'insuline. Regarde la ligne pointillée (moyenne 7 jours), remplis le contexte de tes pesées et tes cases du jour. Si ça continue, parles-en à ton médecin.")
+            if enceinte:
+                st.error("🤰 En grossesse, une prise de poids rapide avec gonflement du visage ou des mains, maux de tête, troubles de la vue ou douleur sous les côtes peut être un signe de pré-éclampsie : appelle ta sage-femme ou le 15 le jour même.")
+
+        base_p = alt.Chart(p_df)
+        ligne_p = base_p.mark_line(point=True, color="#e377c2").encode(
+            x=alt.X("Date_dt:T", title="Date"), y=alt.Y("Poids (kg):Q", scale=alt.Scale(zero=False)),
+            tooltip=["Date", "Poids (kg)", "Moyenne 7 jours"]
+        )
+        ligne_moy = base_p.mark_line(color="#444444", strokeDash=[5, 3]).encode(
+            x=alt.X("Date_dt:T"), y=alt.Y("Moyenne 7 jours:Q", scale=alt.Scale(zero=False))
+        )
+        graphique_poids = (ligne_p + ligne_moy).properties(width=450, height=220)
         st.altair_chart(graphique_poids, use_container_width=False)
+        st.caption("Ligne rose = poids de chaque pesée. Ligne pointillée = moyenne sur 7 jours : c'est elle qui compte, le poids du jour bouge avec l'eau, le sel et le cycle.")
 
         st.write("**📅 Historique de mes pesées**")
         h_df = p_df.copy()
@@ -1044,6 +1076,46 @@ with tab4:
         st.dataframe(pd.DataFrame(lignes_h), use_container_width=True)
 
     st.caption("Ces conseils sont généraux. Ton médecin, ta sage-femme, ton kiné ou ta diététicienne les adaptent à ton cas.")
+
+    # ---------- BILAN PAR SEMAINE ----------
+    st.write("---")
+    st.write("### 🗓️ Mon bilan par semaine (poids, traitement, conseils)")
+    if p_df.empty:
+        st.caption("Enregistre quelques pesées pour voir ton bilan.")
+    else:
+        def _lundi(d_txt):
+            try:
+                d = datetime.strptime(str(d_txt), "%Y-%m-%d").date()
+                return str(d - timedelta(days=d.weekday()))
+            except Exception:
+                return ""
+
+        bil = p_df.copy()
+        bil["Semaine"] = bil["Date"].apply(_lundi)
+        bil = bil[bil["Semaine"] != ""]
+        bilan = bil.groupby("Semaine", as_index=False)["Poids (kg)"].mean().rename(columns={"Poids (kg)": "Poids moyen (kg)"})
+        bilan["Poids moyen (kg)"] = bilan["Poids moyen (kg)"].round(1)
+        bilan["Variation (kg)"] = bilan["Poids moyen (kg)"].diff().round(1)
+
+        jours_trait = {}
+        if not history_df.empty and "Prise" in history_df.columns:
+            ht = history_df[history_df["Prise"].astype(str) != "Aucune"]
+            for d_txt in set(ht["Date"].tolist()):
+                s_lundi = _lundi(d_txt)
+                if s_lundi:
+                    jours_trait[s_lundi] = jours_trait.get(s_lundi, 0) + 1
+
+        conseils_sem = {}
+        for d_txt, coches in tous_jours.items():
+            s_lundi = _lundi(d_txt)
+            if s_lundi:
+                conseils_sem.setdefault(s_lundi, []).append(sum(1 for v in coches.values() if v))
+
+        bilan["Jours avec traitement pris"] = bilan["Semaine"].apply(lambda s: jours_trait.get(s, 0))
+        bilan["Conseils faits (moy./jour)"] = bilan["Semaine"].apply(lambda s: round(sum(conseils_sem[s]) / len(conseils_sem[s]), 1) if s in conseils_sem else None)
+        bilan["Semaine"] = bilan["Semaine"].apply(lambda s: "Sem. du " + datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m"))
+        st.dataframe(bilan.iloc[::-1].reset_index(drop=True), use_container_width=True)
+        st.caption("Regarde si les semaines où le poids monte sont celles où le traitement ou les conseils ont baissé. Ce tableau sert à comprendre, pas à te juger.")
 # --- TAB 5 : HISTORIQUE DIRECT ---
 with tab5:
     st.subheader("📜 Historique Général Cloud")
