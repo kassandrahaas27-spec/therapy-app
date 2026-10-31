@@ -340,10 +340,61 @@ with tab2:
                 
         if not cycle_df.empty:
             import altair as alt
-            graphique_zoome = alt.Chart(cycle_df.sort_values(by="Date").reset_index(drop=True)).mark_line(point=True, color="#1f77b4").encode(
-                x=alt.X('Date:T', title='Date'), y=alt.Y('Température:Q', title='°C Basale', scale=alt.Scale(domain=[35.0, 37.5]))
-            ).properties(width=450, height=250)
+
+            # --- Courbe avec un trait rouge et une couleur par cycle ---
+            cg = cycle_df.copy()
+            cg["Température"] = pd.to_numeric(cg["Température"], errors="coerce")
+            debuts_regles = sorted(set(cg[cg["Cycle Status"] == "🩸 Début des Règles"]["Date"].tolist()))
+            cg = cg.dropna(subset=["Température"]).sort_values(by="Date").reset_index(drop=True)
+
+            def _num_cycle(d):
+                return sum(1 for x in debuts_regles if x <= d)
+
+            def _label_cycle(n):
+                if n == 0:
+                    return "Avant le 1er cycle noté"
+                dd = datetime.strptime(debuts_regles[n - 1], "%Y-%m-%d").strftime("%d/%m")
+                return "Cycle " + str(n) + " (début " + dd + ")"
+
+            def _jour_cycle(row):
+                if row["N"] == 0:
+                    return None
+                debut = datetime.strptime(debuts_regles[row["N"] - 1], "%Y-%m-%d")
+                return (datetime.strptime(row["Date"], "%Y-%m-%d") - debut).days + 1
+
+            cg["N"] = cg["Date"].apply(_num_cycle)
+            cg["Cycle"] = cg["N"].apply(_label_cycle)
+            cg["Jour du cycle"] = cg.apply(_jour_cycle, axis=1)
+            cg["Date_dt"] = pd.to_datetime(cg["Date"])
+
+            ligne = alt.Chart(cg).mark_line(point=True).encode(
+                x=alt.X("Date_dt:T", title="Date"),
+                y=alt.Y("Température:Q", title="°C Basale", scale=alt.Scale(domain=[35.0, 37.5])),
+                color=alt.Color("Cycle:N", title="Cycle", legend=alt.Legend(orient="bottom")),
+                tooltip=["Date", "Température", "Cycle", "Jour du cycle"]
+            )
+            if debuts_regles:
+                regles_marq = pd.DataFrame({"Date_dt": pd.to_datetime(debuts_regles), "Label": ["🩸 Règles"] * len(debuts_regles)})
+                traits = alt.Chart(regles_marq).mark_rule(color="red", strokeDash=[4, 4]).encode(x="Date_dt:T")
+                textes = alt.Chart(regles_marq).mark_text(align="left", dx=4, color="red").encode(x="Date_dt:T", y=alt.value(10), text="Label:N")
+                graphique_zoome = (ligne + traits + textes).properties(width=450, height=280)
+            else:
+                graphique_zoome = ligne.properties(width=450, height=280)
             st.altair_chart(graphique_zoome, use_container_width=False)
+            if not debuts_regles:
+                st.caption("💡 Enregistre un jour avec le statut « 🩸 Début des Règles » pour voir apparaître chaque nouveau cycle sur la courbe.")
+
+            # --- Comparaison des cycles superposés ---
+            cg_cmp = cg[cg["N"] >= 1]
+            if cg_cmp["N"].nunique() >= 2:
+                with st.expander("🔍 Comparer mes cycles (superposés : jour 1 = début des règles)"):
+                    comparaison = alt.Chart(cg_cmp).mark_line(point=True).encode(
+                        x=alt.X("Jour du cycle:Q", title="Jour du cycle"),
+                        y=alt.Y("Température:Q", title="°C Basale", scale=alt.Scale(domain=[35.0, 37.5])),
+                        color=alt.Color("Cycle:N", title="Cycle", legend=alt.Legend(orient="bottom")),
+                        tooltip=["Date", "Température", "Cycle", "Jour du cycle"]
+                    ).properties(width=450, height=280)
+                    st.altair_chart(comparaison, use_container_width=False)
 
             st.write("### 🔮 Analyse de ton Cycle & Fertilité SOPK")
             cycle_tri = cycle_df.copy()
