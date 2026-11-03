@@ -1958,7 +1958,7 @@ function stop(){ run=false; clearTimeout(to); document.getElementById('l').textC
 </script>
 """, height=260)
 
-    with st.expander("🗣️ Phrases toutes prêtes (à montrer ou copier quand parler est dur)"):
+    with st.expander("🗣️ Phrases toutes prêtes (à montrer quand parler est dur)"):
         for ph in [
             "Je suis en surcharge. J'ai besoin de silence et de calme pendant un moment.",
             "Je ne peux pas parler maintenant. Je te réponds par message plus tard.",
@@ -1967,7 +1967,7 @@ function stop(){ run=false; clearTimeout(to); document.getElementById('l').textC
             "J'ai besoin d'une pause. On peut reprendre dans 10 minutes ?",
             "Ce n'est pas contre toi. Mon corps est en alerte, j'ai besoin d'un peu de temps.",
         ]:
-            st.code(ph, language=None)
+            st.markdown("> **" + ph + "**")
 
     st.write("---")
 
