@@ -90,12 +90,92 @@ def maj_stock(nom, config, nouveau_stock):
         return
     redemarrer()
 
+# --- NOUVEAU : tests d'ovulation (lecture de photo) ---
+RESULTATS_TEST = [
+    "Négatif (pas de ligne test ou ligne très faible)",
+    "Ligne test visible mais plus claire que le contrôle",
+    "Presque positif (presque aussi foncée que le contrôle)",
+    "🥚 Pic LH (positif) : ligne test aussi foncée ou plus foncée que le contrôle",
+]
+
+def indice_depuis_ratio(r):
+    if r < 0.15:
+        return 0
+    if r < 0.6:
+        return 1
+    if r < 1.0:
+        return 2
+    return 3
+
+def miniature_base64(fichier):
+    """Réduit la photo (600 px max) et la transforme en texte pour la stocker dans Supabase."""
+    import base64, io
+    from PIL import Image, ImageOps
+    fichier.seek(0)
+    img = ImageOps.exif_transpose(Image.open(fichier)).convert("RGB")
+    img.thumbnail((600, 600))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=70)
+    return base64.b64encode(buf.getvalue()).decode()
+
+def analyser_bandelette(fichier, position_controle):
+    """Estime l'intensité de la ligne test par rapport à la ligne de contrôle.
+    La photo doit être recadrée sur la fenêtre de lecture (les deux lignes visibles)."""
+    import numpy as np
+    from PIL import Image, ImageOps
+    fichier.seek(0)
+    img = ImageOps.exif_transpose(Image.open(fichier)).convert("RGB")
+    angle = {"À droite": 0, "À gauche": 180, "En haut": -90, "En bas": 90}.get(position_controle, 0)
+    if angle != 0:
+        img = img.rotate(angle, expand=True)
+    img.thumbnail((900, 900))
+    vert = np.asarray(img).astype(float)[:, :, 1]
+    h, w = vert.shape
+    if w < 60 or h < 10:
+        return {"ok": False, "message": "Photo trop petite ou mal cadrée.", "ratio": None, "profil": None}
+    bande = vert[int(h * 0.3):int(h * 0.7), :]
+    profil = pd.Series(bande.mean(axis=0))
+    lisse = profil.rolling(5, center=True, min_periods=1).mean()
+    fond = lisse.rolling(max(31, w // 5), center=True, min_periods=1).median()
+    prof = (fond - lisse).clip(lower=0)
+    marge = max(3, int(w * 0.04))
+    prof.iloc[:marge] = 0
+    prof.iloc[w - marge:] = 0
+    seuil = max(4.0, 0.03 * float(fond.mean()))
+    max_local = prof.rolling(15, center=True, min_periods=1).max()
+    candidats = [i for i in range(w) if prof.iloc[i] >= seuil and prof.iloc[i] == max_local.iloc[i]]
+    pics = []
+    for i in candidats:
+        if pics and i - pics[-1] < 15:
+            if prof.iloc[i] > prof.iloc[pics[-1]]:
+                pics[-1] = i
+        else:
+            pics.append(i)
+    if len(pics) > 2:
+        pics = sorted(sorted(pics, key=lambda k: prof.iloc[k], reverse=True)[:2])
+
+    def aire(i):
+        return float(prof.iloc[max(0, i - 8):i + 9].sum())
+
+    if len(pics) == 0:
+        return {"ok": False, "message": "Aucune ligne détectée : photo trop floue, trop sombre, mal cadrée, ou test invalide.", "ratio": None, "profil": prof}
+    if len(pics) == 1:
+        if pics[0] > w * 0.5:
+            return {"ok": True, "message": "Une seule ligne détectée (côté contrôle) : pas de ligne test visible, donc test négatif.", "ratio": 0.0, "profil": prof}
+        return {"ok": False, "message": "Une seule ligne détectée, côté test, sans ligne de contrôle : test invalide ou photo mal cadrée (vérifie le côté de la ligne de contrôle).", "ratio": None, "profil": prof}
+    a_test, a_ctrl = aire(pics[0]), aire(pics[1])
+    if a_ctrl <= 0:
+        return {"ok": False, "message": "Ligne de contrôle illisible.", "ratio": None, "profil": prof}
+    ratio = round(a_test / a_ctrl, 2)
+    return {"ok": True, "message": "Ligne test = " + str(int(round(ratio * 100))) + " % de la ligne de contrôle.", "ratio": ratio, "profil": prof}
+
 # Chargement sécurisé depuis Supabase
 history_df = load_db_from_supabase("historique_prises", ["Date", "Médicament", "Prise", "Moment Repas", "Symptômes Traitement", "Symptômes SOPK/Pré-Diabète", "Note"])
 cycle_df = load_db_from_supabase("cycle_temperature", ["Date", "Cycle Status", "Température", "Rapport Sexuel", "Note", "Mode Parcours"])
 rdv_df = load_db_from_supabase("rdv_medicaux", ["Date", "Heure", "Médecin / Spécialité", "Lieu", "Notes"])
 glyc_df_local = load_db_from_supabase("suivi_glycemie", ["Date", "Glycémie à jeun", "Glycémie Post-Prandiale"])
 poids_df_local = load_db_from_supabase("suivi_poids", ["Date", "Poids (kg)", "Note", "Taille (cm)"])
+tests_df = load_db_from_supabase("tests_ovulation", ["Date", "Heure", "Résultat", "Ratio", "Interprétation", "Photo", "Note"])
 
 # Chargement sécurisé des médicaments
 @st.cache_data(ttl=60)
@@ -338,6 +418,151 @@ with tab2:
             st.success("🎉 Sauvegardé sur le Cloud !")
             redemarrer()
                 
+        # ---------- TESTS D'OVULATION ----------
+        st.write("---")
+        st.write("### 🥚 Mes tests d'ovulation")
+
+        regles_tests = []
+        if not cycle_df.empty and "Cycle Status" in cycle_df.columns:
+            regles_tests = sorted(set(cycle_df[cycle_df["Cycle Status"] == "🩸 Début des Règles"]["Date"].tolist()))
+        if regles_tests:
+            dernieres_r = datetime.strptime(regles_tests[-1], "%Y-%m-%d").date()
+            longueurs = []
+            for a_r, b_r in zip(regles_tests[:-1], regles_tests[1:]):
+                dif = (datetime.strptime(b_r, "%Y-%m-%d").date() - datetime.strptime(a_r, "%Y-%m-%d").date()).days
+                if 15 <= dif <= 90:
+                    longueurs.append(dif)
+            long_cycle = int(round(sum(longueurs) / len(longueurs))) if longueurs else 35
+            debut_tests = dernieres_r + timedelta(days=9)
+            fin_tests = dernieres_r + timedelta(days=max(long_cycle - 10, 14))
+            jour_cycle = (date.today() - dernieres_r).days + 1
+            st.write("**📅 Quand faire les tests ?**")
+            st.markdown(
+                "* Tu es au **jour " + str(jour_cycle) + "** de ton cycle (cycle moyen estimé : **" + str(long_cycle) + " jours**" + ("" if longueurs else ", valeur par défaut faute d'historique") + ").\n"
+                "* **Période conseillée :** du **" + debut_tests.strftime("%d/%m/%Y") + "** (jour 10) au **" + fin_tests.strftime("%d/%m/%Y") + "**, ou jusqu'au premier pic."
+            )
+            if date.today() < debut_tests:
+                st.info("⏳ Pas encore : commence dans " + str((debut_tests - date.today()).days) + " jour(s).")
+            elif date.today() <= fin_tests:
+                st.success("✅ C'est la période des tests : fais-en un aujourd'hui (une fois par jour, toujours à la même heure).")
+            else:
+                st.info("La période conseillée est passée. Si tu n'as pas eu de pic, continue ta courbe de température et parles-en à ton médecin si tes cycles sont très longs.")
+        else:
+            st.info("💡 Enregistre un jour avec le statut « 🩸 Début des Règles » pour que l'appli calcule tes dates de tests. En attendant : commence vers le jour 10 de ton cycle.")
+
+        with st.expander("ℹ️ Comment bien faire le test et reconnaître un pic"):
+            st.markdown("""
+* **Une fois par jour**, toujours à la même heure, plutôt **entre 10 h et 20 h** (début d'après-midi idéal). Évite la première urine du matin.
+* **Bois peu pendant les 2 heures avant** le test, sinon l'urine est trop diluée et la ligne peut sembler plus claire.
+* Lis le résultat **dans le délai du mode d'emploi** (souvent 5 minutes). Une lecture trop tardive peut tromper.
+* Quand la ligne test se **rapproche** de la ligne de contrôle, fais **2 tests par jour** (par exemple 10 h et 18 h) pour ne pas rater le pic.
+* **Pic (positif)** : la ligne test est **aussi foncée ou plus foncée** que la ligne de contrôle. L'ovulation arrive en général **12 à 36 heures environ** après. Rapports le jour du pic et le lendemain.
+* **Ligne test plus claire que le contrôle** : ce n'est pas encore un pic. Continue.
+* **Avec un SOPK**, l'hormone LH est souvent élevée en permanence : le test peut donner des **lignes foncées sans ovulation** (faux positifs). Ne te fie pas qu'au test : ta **courbe de température** confirme l'ovulation après coup (hausse durable). Parles-en à ton médecin si tu as plusieurs pics sans hausse de température.
+            """)
+
+        t_col1, t_col2 = st.columns(2)
+        with t_col1:
+            test_date = st.date_input("🗓️ Date du test", value=date.today(), max_value=date.today(), key="t2_test_date")
+        with t_col2:
+            test_heure = st.text_input("Heure du test", placeholder="15:00", key="t2_test_heure")
+
+        if "photo_test_n" not in st.session_state:
+            st.session_state["photo_test_n"] = 0
+        st.write("**📸 Photo du test (facultatif) : l'appli estime si c'est un pic**")
+        st.caption("Recadre la photo sur la fenêtre de lecture, avec les deux lignes bien visibles, en pleine lumière, sans reflet ni ombre. Le résultat est une estimation : vérifie toujours à l'œil.")
+        pos_controle = st.selectbox("Sur ta photo, où est la ligne de contrôle (C) ?", ["En haut", "En bas", "À droite", "À gauche"], key="t2_test_pos")
+        fichier_up = st.file_uploader("Importer une photo", type=["jpg", "jpeg", "png"], key="t2_test_photo_" + str(st.session_state["photo_test_n"]))
+        photo_cam = None
+        if st.checkbox("📷 Prendre la photo avec l'appareil", key="t2_test_cam_cb"):
+            photo_cam = st.camera_input("Photo du test", key="t2_test_cam_" + str(st.session_state["photo_test_n"]))
+        fichier_photo = photo_cam if photo_cam is not None else fichier_up
+
+        analyse_test = None
+        idx_suggere = 0
+        if fichier_photo is not None:
+            st.image(fichier_photo, width=300)
+            try:
+                analyse_test = analyser_bandelette(fichier_photo, pos_controle)
+            except Exception as e:
+                st.warning("Analyse impossible : " + str(e))
+            if analyse_test:
+                if analyse_test["ok"]:
+                    idx_suggere = indice_depuis_ratio(analyse_test["ratio"])
+                    st.info("🔎 Estimation de l'appli : " + analyse_test["message"] + " → **" + RESULTATS_TEST[idx_suggere] + "**")
+                else:
+                    st.warning("🔎 " + analyse_test["message"])
+                if analyse_test.get("profil") is not None:
+                    with st.expander("📈 Voir comment la photo a été lue"):
+                        st.caption("Les deux creux = les deux lignes. Plus le creux est profond, plus la ligne est foncée.")
+                        st.line_chart(analyse_test["profil"].reset_index(drop=True))
+
+        resultat_test = st.selectbox("Résultat du test (tu peux corriger l'estimation)", RESULTATS_TEST, index=idx_suggere, key="t2_test_res_" + str(idx_suggere) + "_" + str(st.session_state["photo_test_n"]))
+        if resultat_test.startswith("🥚 Pic"):
+            st.success("🎉 Pic détecté ! L'ovulation est attendue dans les 12 à 36 heures environ : rapports aujourd'hui et demain. Note aussi ta température chaque matin pour confirmer.")
+        elif resultat_test.startswith("Presque"):
+            st.warning("⏳ Presque : refais un test dans 4 à 6 heures (ou ce soir) pour ne pas rater le pic.")
+        elif resultat_test.startswith("Ligne test visible"):
+            st.info("📈 L'hormone LH monte. Continue les tests, 2 fois par jour maintenant.")
+        else:
+            st.caption("Pas de pic pour le moment. Continue les tests à la même heure chaque jour.")
+        test_note = st.text_input("Note (facultatif)", key="t2_test_note")
+
+        if st.button("🥚 Enregistrer ce test", key="t2_test_save"):
+            try:
+                photo_b64 = miniature_base64(fichier_photo) if fichier_photo is not None else ""
+            except Exception:
+                photo_b64 = ""
+            ratio_txt = ""
+            interp_txt = ""
+            if analyse_test:
+                interp_txt = analyse_test["message"]
+                if analyse_test["ratio"] is not None:
+                    ratio_txt = str(analyse_test["ratio"])
+            row_test = {"Date": str(test_date), "Heure": test_heure, "Résultat": resultat_test, "Ratio": ratio_txt, "Interprétation": interp_txt, "Photo": photo_b64, "Note": test_note}
+            if save_row_to_supabase("tests_ovulation", row_test):
+                st.session_state["photo_test_n"] += 1
+                st.success("🎉 Test enregistré !")
+                redemarrer()
+
+        if not tests_df.empty:
+            st.write("**📋 Mes tests**")
+            tests_aff = tests_df.drop(columns=[c for c in ["Photo", "created_at"] if c in tests_df.columns]).sort_values(by="Date", ascending=False).reset_index(drop=True)
+            st.dataframe(tests_aff, use_container_width=True)
+
+            if "Ratio" in tests_df.columns:
+                tn = tests_df.copy()
+                tn["Ratio_num"] = pd.to_numeric(tn["Ratio"], errors="coerce")
+                tn = tn.dropna(subset=["Ratio_num"]).sort_values(by=["Date", "Heure"]).reset_index(drop=True)
+                if len(tn) >= 2:
+                    import altair as alt
+                    tn["Date_dt"] = pd.to_datetime(tn["Date"])
+                    courbe_tests = alt.Chart(tn).mark_line(point=True, color="#9467bd").encode(
+                        x=alt.X("Date_dt:T", title="Date"), y=alt.Y("Ratio_num:Q", title="Ligne test / contrôle"), tooltip=["Date", "Heure", "Ratio_num"]
+                    )
+                    trait_pic = alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color="red", strokeDash=[4, 4]).encode(y="y:Q")
+                    st.altair_chart((courbe_tests + trait_pic).properties(width=450, height=200), use_container_width=False)
+                    st.caption("Le trait rouge = ligne test aussi foncée que le contrôle (pic). Au-dessus ou sur le trait = pic.")
+
+            if "Photo" in tests_df.columns and "id" in tests_df.columns:
+                avec_photo = tests_df[tests_df["Photo"].fillna("").astype(str).str.len() > 10]
+                if not avec_photo.empty:
+                    import base64
+                    opts_ph = {str(r["Date"]) + " " + str(r.get("Heure", "")) + " (n°" + str(r["id"]) + ")": r["Photo"] for _, r in avec_photo.iterrows()}
+                    ph_choisie = st.selectbox("📸 Revoir une photo", list(opts_ph.keys()), key="t2_test_ph_sel")
+                    st.image(base64.b64decode(opts_ph[ph_choisie]), width=300)
+
+            if "id" in tests_df.columns:
+                opts_tdel = {str(r["Date"]) + " " + str(r.get("Heure", "")) + " (n°" + str(r["id"]) + ")": r["id"] for _, r in tests_df.iterrows()}
+                tdel_choisi = st.selectbox("Supprimer un test", list(opts_tdel.keys()), key="t2_test_del_sel")
+                if st.button("🚨 Supprimer ce test", key="t2_test_del_btn"):
+                    try:
+                        supabase.table("tests_ovulation").delete().eq("id", int(opts_tdel[tdel_choisi])).execute()
+                        redemarrer()
+                    except Exception as e:
+                        st.error("Erreur de suppression : " + str(e))
+        st.write("---")
+
         if not cycle_df.empty:
             import altair as alt
 
@@ -422,7 +647,11 @@ with tab2:
             else:
                 st.info("Pas de hausse nette détectée pour le moment. Continue à prendre ta température chaque matin.")
 
-            test_ovulation_recent = "🥚 Test d'Ovulation Positif" in status_list[-5:]
+            test_positif_recent = False
+            if not tests_df.empty and "Résultat" in tests_df.columns:
+                limite_tests = str(date.today() - timedelta(days=5))
+                test_positif_recent = not tests_df[(tests_df["Date"] >= limite_tests) & (tests_df["Résultat"].astype(str).str.startswith("🥚 Pic"))].empty
+            test_ovulation_recent = ("🥚 Test d'Ovulation Positif" in status_list[-5:]) or test_positif_recent
             rapport_recent = "Oui" in rapports_list[-3:]
 
             if test_ovulation_recent and rapport_recent:
@@ -1208,3 +1437,7 @@ with tab5:
     st.write("---")
     st.write("**Mes rendez-vous (modifiables, compte-rendu inclus) :**")
     editeur_table(rdv_df, "rdv_medicaux", "ed_rdv")
+
+    st.write("---")
+    st.write("**Mes tests d'ovulation (modifiables) :**")
+    editeur_table(tests_df.drop(columns=[c for c in ["Photo"] if c in tests_df.columns]), "tests_ovulation", "ed_tests")
