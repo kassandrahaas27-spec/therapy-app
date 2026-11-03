@@ -662,6 +662,42 @@ with tab3:
                         except Exception as e:
                             st.error("Erreur : " + str(e))
 
+        st.write("**✏️ Modifier un rendez-vous (en cas d'erreur)**")
+        if "id" in rdv_aff.columns:
+            def _txt(v):
+                return "" if pd.isna(v) else str(v)
+
+            opts_mod = {f"{r['Date']} - {r['Médecin / Spécialité']} (n°{r['id']})": r["id"] for _, r in rdv_aff.iterrows()}
+            mod_choisi = st.selectbox("Quel rendez-vous corriger ?", list(opts_mod.keys()), key="t3_mod_select")
+            id_mod = opts_mod[mod_choisi]
+            ligne_mod = rdv_aff[rdv_aff["id"] == id_mod].iloc[0]
+            try:
+                date_mod_defaut = datetime.strptime(str(ligne_mod["Date"]), "%Y-%m-%d").date()
+            except Exception:
+                date_mod_defaut = date.today()
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                new_date = st.date_input("Date du RDV", value=date_mod_defaut, key=f"t3_mod_date_{id_mod}")
+            with mc2:
+                new_heure = st.text_input("Heure", value=_txt(ligne_mod.get("Heure")), key=f"t3_mod_heure_{id_mod}")
+            new_doc = st.text_input("Médecin / Spécialité", value=_txt(ligne_mod.get("Médecin / Spécialité")), key=f"t3_mod_doc_{id_mod}")
+            new_lieu = st.text_input("Lieu / Adresse", value=_txt(ligne_mod.get("Lieu")), key=f"t3_mod_lieu_{id_mod}")
+            new_notes = st.text_input("Notes", value=_txt(ligne_mod.get("Notes")), key=f"t3_mod_notes_{id_mod}")
+            statuts = ["À venir", "✅ Effectué", "❌ Annulé"]
+            statut_actuel = _txt(ligne_mod.get("Statut"))
+            new_statut = st.selectbox("Statut", statuts, index=statuts.index(statut_actuel) if statut_actuel in statuts else 0, key=f"t3_mod_statut_{id_mod}")
+            new_cr = st.text_area("Compte-rendu", value=_txt(ligne_mod.get("Compte-rendu")), key=f"t3_mod_cr_{id_mod}")
+            if st.button("💾 Enregistrer la correction", key="t3_mod_btn"):
+                try:
+                    supabase.table("rdv_medicaux").update({
+                        "Date": str(new_date), "Heure": new_heure, "Médecin / Spécialité": new_doc,
+                        "Lieu": new_lieu, "Notes": new_notes, "Statut": new_statut, "Compte-rendu": new_cr
+                    }).eq("id", int(id_mod)).execute()
+                    st.success("Rendez-vous corrigé !")
+                    redemarrer()
+                except Exception as e:
+                    st.error("Erreur : " + str(e))
+
         st.write("**🗑️ Supprimer un rendez-vous**")
         options_rdv = {f"{r['Date']} - {r['Médecin / Spécialité']} (n°{r['id']})": r['id'] for _, r in rdv_df.iterrows()}
         rdv_choisi = st.selectbox("Choisir le rendez-vous à supprimer", list(options_rdv.keys()), key="t3_del_select")
@@ -732,8 +768,12 @@ with tab4:
     with cg1:
         glyc_val = st.number_input("Sucre (g/L)", min_value=0.0, max_value=6.0, value=0.95, step=0.01, key="t4_g_val")
     with cg2:
-        glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le petit-déjeuner", "2h après le déjeuner", "2h après le dîner"], key="t4_g_moment")
+        glyc_mode = st.selectbox("Moment", ["Matin à jeun", "2h après le petit-déjeuner", "2h après le déjeuner", "2h après le dîner", "1h après un mauvais résultat"], key="t4_g_moment")
     a_jeun = (glyc_mode == "Matin à jeun")
+    recontrole_1h = (glyc_mode == "1h après un mauvais résultat")
+    seuil_post = 1.40 if recontrole_1h else (1.20 if enceinte else 1.40)
+    if recontrole_1h:
+        st.info("🔁 Mesure faite 1 h après un mauvais résultat. Note ce que tu as fait entre les deux (marche, eau, repas) dans le champ « repas » si il apparaît.")
     if glyc_val < 0.70:
         st.error("🔻 Glycémie basse (hypoglycémie). Prends tout de suite 15 g de sucre (3 morceaux de sucre ou un demi-verre de jus), assieds-toi, puis recontrôle dans 15 minutes. Si elle reste basse ou si tu as des malaises (sueurs, tremblements, confusion), appelle ton médecin ou le 15.")
     elif a_jeun:
@@ -748,7 +788,7 @@ with tab4:
         else:
             st.error("🛑 Valeur élevée à jeun. Refais le contrôle (mains propres et sèches). Si elle est confirmée, appelle ton médecin dans la journée. Si tu as une soif intense, des vomissements, une grande fatigue ou une respiration inhabituelle, appelle le 15 ou va aux urgences.")
     else:
-        seuil_ok = 1.20 if enceinte else 1.40
+        seuil_ok = seuil_post
         if glyc_val < seuil_ok:
             st.success("✅ Bonne valeur après repas. Continue : légumes en premier et petite marche après le repas.")
         elif glyc_val < 2.00:
@@ -761,7 +801,7 @@ with tab4:
     st.caption("Repères indicatifs, je ne remplace pas un médecin. Ton équipe médicale fixe tes objectifs personnels.")
 
     # NOUVEAU : seuils, malaise et contrôle de vérification
-    seuil_haut = (0.95 if enceinte else 1.00) if a_jeun else (1.20 if enceinte else 1.40)
+    seuil_haut = (0.95 if enceinte else 1.00) if a_jeun else seuil_post
     taux_eleve = glyc_val >= seuil_haut
     taux_bas = glyc_val < 0.70
 
@@ -794,7 +834,7 @@ with tab4:
                 st.success("✅ Le contrôle est dans les repères : la 1re mesure était peut-être faussée (mains sales ou sucrées). Garde les deux valeurs et surveille.")
 
     repas_mange = ""
-    seuil_repas = 1.20 if enceinte else 1.40
+    seuil_repas = seuil_post
     if (not a_jeun) and glyc_val >= seuil_repas:
         repas_mange = st.text_input("🍽️ Qu'as-tu mangé à ce repas ? (pour comprendre ce qui fait monter)", key="t4_g_repas")
     if st.button("💾 Sauvegarder la glycémie", key="t4_submit_glyc_only"):
