@@ -6,6 +6,17 @@ from supabase import create_client, Client
 
 st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
 
+st.markdown("""
+<style>
+/* Menu : les onglets passent à la ligne au lieu de défiler avec une flèche */
+div[data-baseweb="tab-list"]{flex-wrap:wrap !important; gap:2px 6px; overflow:visible !important;}
+div[data-baseweb="tab-list"] button[data-baseweb="tab"]{padding:6px 10px; height:auto;}
+div[data-baseweb="tab-list"] ~ div[data-testid="stTabScrollButton"], button[data-testid="stTabScrollButton"]{display:none !important;}
+div[data-baseweb="tab-highlight"]{display:none !important;}
+div[data-baseweb="tab-border"]{display:none !important;}
+</style>
+""", unsafe_allow_html=True)
+
 # --- PARAMÈTRES DE CONNEXION SUPABASE SÉCURISÉS REELS ---
 SUPABASE_URL = "https://fazxmveukiqpcefzghsr.supabase.co"
 SUPABASE_KEY = "sb_publishable_VPYYOesD0T97zyl3V9b0Ng_VUXQ-lph"
@@ -347,7 +358,7 @@ if meds:
             redemarrer()
 
 # --- ONGLETS PRINCIPAUX ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "📜 Historique & Corrections", "🧘 Douleur & Énergie", "📄 Fiche pour mes médecins"])
+tab1, tab2, tab3, tab4, tab6, tab7, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"])
 
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
@@ -1945,9 +1956,15 @@ with tab7:
         corps_html += "<h3>" + html_lib.escape(titre_f) + "</h3><ul>" + "".join("<li>" + html_lib.escape(l_f) + "</li>" for l_f in lignes_f) + "</ul>"
         corps_txt += "\n" + titre_f + "\n" + "\n".join("- " + l_f for l_f in lignes_f) + "\n"
     page_html = "<html><head><meta charset='utf-8'><title>Fiche pour mes médecins</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:20px auto;line-height:1.5} h3{border-bottom:1px solid #ccc;padding-bottom:4px}</style></head><body><h2>Fiche pour mes médecins</h2><p>Éditée le " + date.today().strftime("%d/%m/%Y") + "</p>" + corps_html + "</body></html>"
+    import base64
+    def lien_telechargement(contenu, nom, mime, label):
+        b64 = base64.b64encode(contenu.encode("utf-8")).decode()
+        return ("<a href='data:" + mime + ";charset=utf-8;base64," + b64 + "' download='" + nom + "' "
+                "style='display:block;text-align:center;padding:10px 12px;margin-bottom:8px;border:1px solid #ccc;"
+                "border-radius:8px;text-decoration:none;color:inherit;font-size:0.95rem;'>" + label + "</a>")
     dl1, dl2 = st.columns(2)
     with dl1:
-        st.download_button("⬇️ Fiche à imprimer (ouvre-la puis Imprimer, Enregistrer en PDF)", data=page_html.encode("utf-8"), file_name="fiche_medecins_" + str(date.today()) + ".html", mime="text/html", key="t7_dl_html")
+        st.markdown(lien_telechargement(page_html, "fiche_medecins_" + str(date.today()) + ".html", "text/html", "⬇️ Fiche à imprimer<br><small>(ouvre-la puis Imprimer / Enregistrer en PDF)</small>"), unsafe_allow_html=True)
     with dl2:
-        st.download_button("⬇️ Version texte", data=corps_txt.encode("utf-8"), file_name="fiche_medecins_" + str(date.today()) + ".txt", mime="text/plain", key="t7_dl_txt")
+        st.markdown(lien_telechargement(corps_txt, "fiche_medecins_" + str(date.today()) + ".txt", "text/plain", "⬇️ Version texte"), unsafe_allow_html=True)
     st.caption("Ces informations viennent de ce que tu as noté dans l'appli. Elles ne remplacent pas un dossier médical.")
