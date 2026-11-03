@@ -256,6 +256,7 @@ examens_df = load_db_from_supabase("examens_pma", ["Date", "Examen", "Statut", "
 questions_df = load_db_from_supabase("questions_medecin", ["Date", "Question", "Pour", "Posée", "Réponse"])
 rdv_prendre_df = load_db_from_supabase("rdv_a_prendre", ["Spécialité", "Pour quoi", "Téléphone", "Statut", "Date appel", "Note"])
 douleur_df = load_db_from_supabase("suivi_douleur_fatigue", ["Date", "Douleur (0-10)", "Fatigue (0-10)", "Sommeil (h)", "Qualité sommeil (0-10)", "Zones douloureuses", "Symptômes endométriose", "Note"])
+neuro_df = load_db_from_supabase("suivi_neuro", ["Date", "Surcharge sensorielle (0-10)", "Anxiété / hypervigilance (0-10)", "Concentration (0-10)", "Agitation / impulsivité (0-10)", "Événements", "Déclencheurs", "Ce qui a aidé", "Note"])
 bilans_df = load_db_from_supabase("resultats_bilans", ["Date", "Examen", "Valeur", "Unité", "Note"])
 
 # Chargement sécurisé des médicaments
@@ -369,7 +370,7 @@ if meds:
             redemarrer()
 
 # --- ONGLETS PRINCIPAUX ---
-tab1, tab2, tab3, tab4, tab6, tab7, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"])
+tab1, tab2, tab3, tab4, tab6, tab8, tab7, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧠 TDAH · TSA · SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"])
 
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
@@ -1818,6 +1819,11 @@ with tab5:
     bloc_suppression(douleur_df, "suivi_douleur_fatigue", "t5_douleur_del", ["Date", "Douleur (0-10)"])
 
     st.write("---")
+    st.write("**Mes check-ins TDAH · TSA · SPT (modifiable) :**")
+    editeur_table(neuro_df, "suivi_neuro", "ed_neuro")
+    bloc_suppression(neuro_df, "suivi_neuro", "t5_neuro_del", ["Date", "Événements"])
+
+    st.write("---")
     st.write("**Mes résultats de prises de sang (modifiable) :**")
     editeur_table(bilans_df, "resultats_bilans", "ed_bilans")
     bloc_suppression(bilans_df, "resultats_bilans", "t5_bilans_del", ["Date", "Examen", "Valeur"])
@@ -1890,6 +1896,195 @@ with tab6:
         st.dataframe(douleur_df.sort_values(by="Date", ascending=False).head(14).drop(columns=[c for c in ["created_at"] if c in douleur_df.columns]), use_container_width=True)
     else:
         st.caption("Aucun enregistrement pour le moment.")
+
+# --- TAB 8 : TDAH · TSA · SPT ---
+with tab8:
+    import streamlit.components.v1 as components_n
+    st.subheader("🧠 TDAH · TSA · SPT : mes outils")
+    st.caption("Des repères pratiques, pas un diagnostic ni un traitement : ils ne remplacent pas ton équipe de soin. En détresse ou en danger : 3114 (prévention du suicide, 24h/24) ou 15 / 112.")
+
+    plan = charger_config(6)
+
+    # ---------- 1. LÀ, MAINTENANT ----------
+    st.write("### 🆘 Là, maintenant")
+    situation = st.radio("Ce que je vis :", ["🔊 Surcharge / crise (TSA)", "⚡ Flashback, panique, corps en alerte (SPT)", "🌀 Je n'arrive pas à démarrer ou je suis débordée (TDAH)"], key="t8_situation")
+    if plan.get("aide", "").strip():
+        st.success("💛 **Ce qui m'aide d'habitude (mon plan) :** " + " / ".join(x.strip() for x in plan["aide"].splitlines() if x.strip()))
+    if plan.get("phrase", "").strip():
+        st.info("🗨️ **Ma phrase d'ancrage :** " + plan["phrase"].strip())
+
+    if situation.startswith("🔊"):
+        st.markdown("""
+1. **Réduire l'entrée :** m'éloigner du bruit, de la lumière, des gens. Baisser la luminosité, mettre casque ou bouchons, lunettes teintées.
+2. **Ne rien demander de plus :** pas de décision, pas de conversation. Utiliser une phrase toute prête (voir plus bas) ou un message.
+3. **Mon corps d'abord :** stimming autorisé (balancement, mains, objet à tenir), couverture lestée ou pression douce, position confortable.
+4. **Attendre sans me juger :** la crise ou le shutdown passe. Boire un peu d'eau, grignoter si possible.
+5. **Après :** noter ce qui l'a déclenchée dans le check-in (sans me blâmer), et me reposer plus que d'habitude.
+""")
+    elif situation.startswith("⚡"):
+        st.markdown("""
+1. **Me dire la vérité du moment :** « Je suis en sécurité maintenant. Nous sommes le **""" + date.today().strftime("%d/%m/%Y") + """**. Ce que je ressens est un souvenir, ça va passer. »
+2. **Respirer plus lentement :** inspirer 4 secondes, expirer 6 secondes (outil ci-dessous), 5 à 10 fois.
+3. **Ancrage 5-4-3-2-1 :** nommer à voix haute ou dans ma tête **5** choses que je vois, **4** que je peux toucher, **3** que j'entends, **2** que je sens, **1** que je goûte.
+4. **Remettre du présent :** sentir mes pieds sur le sol, le dos contre le dossier, regarder les murs et les coins de la pièce.
+5. **Appeler quelqu'un de confiance** si ça ne descend pas. Si je pense à me faire du mal : 3114 ou 15 / 112.
+""")
+    else:
+        st.markdown("""
+1. **Une seule petite action :** la plus petite possible (ouvrir le document, poser le linge sur le lit, remplir un verre d'eau).
+2. **Règle des 2 minutes :** je commence juste 2 minutes. Si je veux m'arrêter après, c'est permis.
+3. **Minuteur :** 5 à 10 minutes (minuteur de l'onglet Tableau de Bord en mode TDAH / TSA), puis pause.
+4. **Sortir de ma tête :** tout ce qui tourne va dans le « vide-tête » plus bas. Je n'ai pas à tout retenir.
+5. **Récompense simple :** après la tâche, quelque chose de petit et agréable (musique, boisson, étirement).
+""")
+
+    with st.expander("🌬️ Respiration guidée (4 s inspire, 6 s expire)"):
+        components_n.html("""
+<div style='font-family:sans-serif;text-align:center'>
+ <div id='c' style='width:70px;height:70px;border-radius:50%;background:#9ec5d8;margin:25px auto;transition:all 4s ease-in-out'></div>
+ <div id='l' style='font-size:20px;color:#333'>Appuie pour commencer</div>
+ <button onclick='start()' style='margin-top:10px'>Démarrer</button> <button onclick='stop()'>Arrêter</button>
+</div>
+<script>
+var run=false,to=null;
+function cycle(){ if(!run)return;
+ var c=document.getElementById('c'),l=document.getElementById('l');
+ l.textContent='Inspire...';c.style.transition='all 4s ease-in-out';c.style.width='150px';c.style.height='150px';c.style.margin='-5px auto';
+ to=setTimeout(function(){ if(!run)return;
+  l.textContent='Expire doucement...';c.style.transition='all 6s ease-in-out';c.style.width='70px';c.style.height='70px';c.style.margin='25px auto';
+  to=setTimeout(cycle,6000);},4000);}
+function start(){ if(run)return; run=true; cycle(); }
+function stop(){ run=false; clearTimeout(to); document.getElementById('l').textContent='Pause. Tu peux reprendre quand tu veux.'; }
+</script>
+""", height=260)
+
+    with st.expander("🗣️ Phrases toutes prêtes (à montrer ou copier quand parler est dur)"):
+        for ph in [
+            "Je suis en surcharge. J'ai besoin de silence et de calme pendant un moment.",
+            "Je ne peux pas parler maintenant. Je te réponds par message plus tard.",
+            "Peux-tu me l'écrire ou me le répéter plus lentement, une chose à la fois ?",
+            "Prévenez-moi avant de me toucher et expliquez-moi ce que vous allez faire.",
+            "J'ai besoin d'une pause. On peut reprendre dans 10 minutes ?",
+            "Ce n'est pas contre toi. Mon corps est en alerte, j'ai besoin d'un peu de temps.",
+        ]:
+            st.code(ph, language=None)
+
+    st.write("---")
+
+    # ---------- 2. MON PLAN PERSONNEL ----------
+    st.write("### 📝 Mon plan personnel")
+    st.caption("À remplir une fois, quand ça va mieux. Il s'affichera au moment où tu en as besoin et peut figurer sur la fiche pour tes médecins.")
+    with st.expander("Voir / modifier mon plan", expanded=not bool(plan)):
+        p_signes = st.text_area("⚠️ Mes signes d'alerte (comment je sais que ça monte)", value=plan.get("signes", ""), key="t8_signes", placeholder="Ex : je me crispe, je n'entends plus bien, j'ai chaud, je fuis les regards...")
+        p_decl = st.text_area("🎯 Mes déclencheurs connus", value=plan.get("declencheurs", ""), key="t8_decl", placeholder="Ex : bruit soudain, changement de programme, foule, odeur, certaines situations médicales...")
+        p_aide = st.text_area("💛 Ce qui m'aide", value=plan.get("aide", ""), key="t8_aide", placeholder="Ex : casque, pièce sombre, couverture lestée, musique, appeler une personne...")
+        p_eviter = st.text_area("🚫 Ce qui m'aggrave (à éviter)", value=plan.get("eviter", ""), key="t8_eviter", placeholder="Ex : qu'on me touche sans prévenir, qu'on me presse, qu'on parle fort...")
+        p_phrase = st.text_input("🗨️ Ma phrase d'ancrage", value=plan.get("phrase", ""), key="t8_phrase", placeholder="Ex : Je suis en sécurité, je suis chez moi, ça va passer.")
+        p_soignants = st.text_area("🩺 Ce que mes soignants peuvent faire pour moi", value=plan.get("soignants", ""), key="t8_soignants", placeholder="Ex : expliquer chaque geste, me laisser dire stop, me donner les consignes par écrit, éviter les contacts surprises.")
+        p_contact = st.text_input("📞 Qui appeler", value=plan.get("contact", ""), key="t8_contact", placeholder="Nom et numéro")
+        if st.button("💾 Enregistrer mon plan", key="t8_save_plan"):
+            if sauver_config(6, {"signes": p_signes, "declencheurs": p_decl, "aide": p_aide, "eviter": p_eviter, "phrase": p_phrase, "soignants": p_soignants, "contact": p_contact}):
+                st.success("🎉 Plan enregistré !")
+                redemarrer()
+
+    st.write("---")
+
+    # ---------- 3. ROUTINE ----------
+    st.write("### 🗓️ Ma routine prévisible")
+    st.caption("Des repères fixes aident le TSA et le TDAH. Une étape par ligne. Les cases se remettent à zéro chaque jour.")
+    rout = charger_config(7)
+    with st.expander("✏️ Écrire / modifier ma routine"):
+        r_matin = st.text_area("🌅 Matin", value=rout.get("matin", ""), key="t8_r_matin", placeholder="Boire un verre d'eau\nPrendre mes médicaments\nPetit-déjeuner")
+        r_jour = st.text_area("☀️ Journée", value=rout.get("jour", ""), key="t8_r_jour")
+        r_soir = st.text_area("🌙 Soir", value=rout.get("soir", ""), key="t8_r_soir", placeholder="Préparer les affaires de demain\nLumière douce\nMédicaments du soir")
+        if st.button("💾 Enregistrer ma routine", key="t8_save_rout"):
+            if sauver_config(7, {"matin": r_matin, "jour": r_jour, "soir": r_soir}):
+                redemarrer()
+    nb_total_r, nb_fait_r = 0, 0
+    for titre_r, cle_r in [("🌅 Matin", "matin"), ("☀️ Journée", "jour"), ("🌙 Soir", "soir")]:
+        etapes = [x.strip() for x in str(rout.get(cle_r, "")).splitlines() if x.strip()]
+        if etapes:
+            st.write("**" + titre_r + "**")
+            for i_r, e_r in enumerate(etapes):
+                nb_total_r += 1
+                if st.checkbox(e_r, key="t8_rt_" + cle_r + "_" + str(i_r) + "_" + str(date.today())):
+                    nb_fait_r += 1
+    if nb_total_r:
+        st.progress(nb_fait_r / nb_total_r, text=str(nb_fait_r) + " étape(s) sur " + str(nb_total_r))
+    else:
+        st.caption("Ta routine est vide pour l'instant.")
+
+    st.write("---")
+
+    # ---------- 4. VIDE-TÊTE ----------
+    st.write("### 🧺 Vide-tête")
+    st.caption("Note vite ce qui tourne dans ta tête (une idée, une tâche, un souci). Tu le traiteras plus tard, tu n'as pas à le garder en mémoire.")
+    vt_cfg = charger_config(8)
+    vt_liste = list(vt_cfg.get("items", []))
+    vt_new = st.text_input("Ce qui me passe par la tête", key="t8_vt_txt", placeholder="Ex : rappeler la pharmacie")
+    if st.button("➕ Poser dans le vide-tête", key="t8_vt_add"):
+        if vt_new.strip():
+            vt_liste.append(vt_new.strip())
+            if sauver_config(8, {"items": vt_liste}):
+                redemarrer()
+    if vt_liste:
+        a_retirer = []
+        for i_v, it in enumerate(vt_liste):
+            if st.checkbox(it, key="t8_vt_" + str(i_v) + "_" + str(len(vt_liste))):
+                a_retirer.append(i_v)
+        if a_retirer and st.button("✅ Retirer ce qui est coché (fait ou plus utile)", key="t8_vt_del"):
+            reste = [x for j, x in enumerate(vt_liste) if j not in a_retirer]
+            if sauver_config(8, {"items": reste}):
+                redemarrer()
+    else:
+        st.caption("Rien dans le vide-tête. 🌿")
+
+    st.write("---")
+
+    # ---------- 5. CHECK-IN ----------
+    st.write("### 📊 Check-in du jour")
+    st.caption("30 secondes. Sert à repérer ce qui déclenche, ce qui aide, et à en parler à tes médecins avec des faits.")
+    n_date = st.date_input("🗓️ Jour", value=date.today(), max_value=date.today(), key="t8_date")
+    n1, n2 = st.columns(2)
+    with n1:
+        n_surcharge = st.slider("🔊 Surcharge sensorielle", 0, 10, 3, key="t8_surcharge")
+        n_anx = st.slider("⚡ Anxiété / hypervigilance", 0, 10, 3, key="t8_anx")
+    with n2:
+        n_conc = st.slider("🎯 Concentration (10 = facile)", 0, 10, 5, key="t8_conc")
+        n_agit = st.slider("🌀 Agitation / impulsivité", 0, 10, 3, key="t8_agit")
+    n_events = st.multiselect("Ce qui s'est passé", ["Crise / meltdown", "Shutdown (je me suis éteinte)", "Crise de panique", "Flashback", "Cauchemar", "Dissociation (déconnectée)", "Évitement", "Sursauts / hypervigilance", "Hyperfocus (j'ai oublié de manger ou boire)", "Oublis ou retards", "Aucun événement"], key="t8_events")
+    n_decl = st.multiselect("Déclencheurs", ["Bruit", "Lumière", "Foule", "Changement de programme", "Imprévu", "Contact physique", "Odeur / texture", "Contexte médical", "Conflit / échange social", "Manque de sommeil", "Douleur", "Faim", "Je ne sais pas"], key="t8_decl_ms")
+    n_aide = st.text_input("Ce qui m'a aidée", key="t8_aide_txt")
+    n_note = st.text_input("Note libre", key="t8_note")
+    if st.button("💾 Enregistrer mon check-in", key="t8_save_checkin"):
+        ok_n = save_row_to_supabase("suivi_neuro", {
+            "Date": str(n_date), "Surcharge sensorielle (0-10)": int(n_surcharge), "Anxiété / hypervigilance (0-10)": int(n_anx),
+            "Concentration (0-10)": int(n_conc), "Agitation / impulsivité (0-10)": int(n_agit),
+            "Événements": ", ".join(n_events) if n_events else "Aucun", "Déclencheurs": ", ".join(n_decl) if n_decl else "",
+            "Ce qui a aidé": n_aide, "Note": n_note})
+        if ok_n:
+            st.success("🎉 Check-in enregistré !")
+            redemarrer()
+        else:
+            st.warning("Si l'erreur parle d'une table introuvable, il faut créer la table « suivi_neuro » dans Supabase (script SQL fourni à côté de l'appli).")
+
+    if not neuro_df.empty and "Date" in neuro_df.columns:
+        nd = neuro_df.sort_values(by="Date", ascending=False)
+        st.write("**Mes derniers check-ins :**")
+        st.dataframe(nd.head(14).drop(columns=[c for c in ["created_at", "id"] if c in nd.columns]), use_container_width=True)
+        cols_score = [c for c in ["Surcharge sensorielle (0-10)", "Anxiété / hypervigilance (0-10)", "Concentration (0-10)", "Agitation / impulsivité (0-10)"] if c in nd.columns]
+        if len(nd) >= 2 and cols_score:
+            gr = nd.head(30).sort_values(by="Date").set_index("Date")[cols_score].apply(pd.to_numeric, errors="coerce")
+            st.line_chart(gr)
+        decl_compte = {}
+        for ligne in nd.head(30).get("Déclencheurs", pd.Series(dtype=str)).fillna("").tolist():
+            for d_item in [x.strip() for x in str(ligne).split(",") if x.strip()]:
+                decl_compte[d_item] = decl_compte.get(d_item, 0) + 1
+        if decl_compte:
+            top = sorted(decl_compte.items(), key=lambda kv: kv[1], reverse=True)[:3]
+            st.info("🔎 Déclencheurs les plus fréquents (30 derniers check-ins) : " + ", ".join(k + " (" + str(v) + ")" for k, v in top))
+    else:
+        st.caption("Aucun check-in enregistré pour le moment.")
 
 # --- TAB 7 : FICHE POUR MES MÉDECINS ---
 with tab7:
@@ -1990,6 +2185,27 @@ with tab7:
                 if len(v_d) > 0:
                     lig_d.append(lib_d + " (moyenne sur 14 jours) : " + str(round(float(v_d.mean()), 1)) + " sur " + str(len(v_d)) + " jour(s) noté(s)")
     fiche.append(("🧘 Douleur, fatigue, sommeil", lig_d or ["Pas de donnée récente"]))
+
+    lig_n = []
+    plan_f = charger_config(6)
+    for lib_n, cle_n in [("Mes signes d'alerte", "signes"), ("Mes déclencheurs", "declencheurs"), ("Ce qui m'aide", "aide"), ("Ce qui m'aggrave", "eviter"), ("Ce que mes soignants peuvent faire", "soignants"), ("Qui appeler", "contact")]:
+        if str(plan_f.get(cle_n, "")).strip():
+            lig_n.append(lib_n + " : " + _une_ligne(plan_f[cle_n]))
+    if not neuro_df.empty and "Date" in neuro_df.columns:
+        nf = neuro_df.sort_values(by="Date", ascending=False).head(30)
+        for c_n in ["Surcharge sensorielle (0-10)", "Anxiété / hypervigilance (0-10)", "Concentration (0-10)", "Agitation / impulsivité (0-10)"]:
+            if c_n in nf.columns:
+                moy_n = pd.to_numeric(nf[c_n], errors="coerce").mean()
+                if pd.notna(moy_n):
+                    lig_n.append(c_n.replace(" (0-10)", "") + " : moyenne " + str(round(float(moy_n), 1)) + "/10 sur " + str(len(nf)) + " check-in(s)")
+        ev_compte = {}
+        for ligne_e in nf.get("Événements", pd.Series(dtype=str)).fillna("").tolist():
+            for e_item in [x.strip() for x in str(ligne_e).split(",") if x.strip() and x.strip() != "Aucun"]:
+                ev_compte[e_item] = ev_compte.get(e_item, 0) + 1
+        if ev_compte:
+            lig_n.append("Événements notés : " + ", ".join(k + " (" + str(v) + ")" for k, v in sorted(ev_compte.items(), key=lambda kv: kv[1], reverse=True)))
+    if lig_n:
+        fiche.append(("🧠 TDAH, TSA, stress post-traumatique", lig_n))
 
     lig_r = []
     if not rdv_df.empty and "Date" in rdv_df.columns:
