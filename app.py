@@ -291,6 +291,17 @@ poids_config = load_config_grossesse()
 st.sidebar.header("⚙️ Configuration Globale")
 parcours_mode = st.sidebar.selectbox("🌸 Ton parcours actuel :", ["Suivi de Cycle & Essai Bébé", "Suivi de Grossesse Évolutif", "Parcours PMA (Procréation Médicalement Assistée)"], key="side_parcours_mode")
 jour_difficile = st.sidebar.checkbox("🌧️ Mode jour difficile (affichage simplifié)", key="side_jour_diff")
+neuro_mode = st.sidebar.checkbox("🧠 Mode TDAH / TSA (une chose à la fois, plus calme)", key="side_neuro")
+if neuro_mode:
+    st.markdown("""
+<style>
+/* Mode calme : pas d'animation, couleurs douces, plus d'espace */
+*{transition:none !important; animation:none !important;}
+.stApp{background-color:#f6f4ef;}
+.block-container{line-height:1.7;}
+div[data-testid="stAlert"]{border-radius:12px;}
+</style>
+""", unsafe_allow_html=True)
 masquer_poids = st.sidebar.checkbox("🙈 Masquer le détail de mon poids", key="side_masquer_poids")
 
 with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=True):
@@ -375,7 +386,10 @@ with tab1:
     
     # --- NOUVEAU : À FAIRE POUR LA JOURNÉE ---
     st.write("### ✅ À faire pour le " + date_saisie.strftime("%d/%m/%Y"))
+    zone_focus = st.container()
+    zone_liste = st.expander("📋 Voir toute la liste", expanded=False) if neuro_mode else st.container()
     manquants = {}
+    total_requis_n = 0
     for nom_m, info_m2 in meds.items():
         requis = [lib for lib, cle, defaut in MOMENTS_PRISE if info_m2.get(cle, defaut)]
         pris_txt = ""
@@ -383,15 +397,16 @@ with tab1:
             lignes_j = history_df[(history_df["Date"] == str(date_saisie)) & (history_df["Médicament"] == nom_m)]
             pris_txt = " ".join(lignes_j["Prise"].astype(str).tolist())
         manque = [lib for lib in requis if lib not in pris_txt]
+        total_requis_n += len(requis)
         if manque:
             manquants[nom_m] = manque
     if not meds:
-        st.caption("Ajoute un médicament dans le menu à gauche pour commencer.")
+        zone_liste.caption("Ajoute un médicament dans le menu à gauche pour commencer.")
     elif manquants:
         for nom_m, manque in manquants.items():
-            st.write("💊 **" + nom_m + "** : " + ", ".join(manque) + " à enregistrer")
+            zone_liste.write("💊 **" + nom_m + "** : " + ", ".join(manque) + " à enregistrer")
     else:
-        st.success("💊 Tous tes traitements sont enregistrés pour ce jour.")
+        zone_liste.success("💊 Tous tes traitements sont enregistrés pour ce jour.")
 
     autres_taches = []
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
@@ -416,7 +431,37 @@ with tab1:
         if nb_appeler > 0:
             autres_taches.append("📞 " + str(nb_appeler) + " rendez-vous à prendre (onglet Rendez-vous Médicaux)")
     for tache in autres_taches:
-        st.write(tache)
+        zone_liste.write(tache)
+
+    if neuro_mode:
+        with zone_focus:
+            if total_requis_n > 0:
+                faits_n = total_requis_n - sum(len(v) for v in manquants.values())
+                st.progress(faits_n / total_requis_n, text="Prises faites aujourd'hui : " + str(faits_n) + " sur " + str(total_requis_n))
+            if manquants:
+                nom_f = list(manquants.keys())[0]
+                st.info("👉 **Maintenant, une seule chose :** prendre " + nom_f + " (" + manquants[nom_f][0] + "), puis cocher ci-dessous.")
+            elif autres_taches:
+                st.info("👉 **Prochaine petite chose :** " + autres_taches[0])
+            else:
+                st.success("🌿 Rien d'urgent. Tu peux te reposer.")
+            with st.expander("⏱️ Minuteur de focus / pause"):
+                import streamlit.components.v1 as components
+                components.html("""
+<div style='font-family:sans-serif;text-align:center'>
+  <div id='t' style='font-size:42px;margin:8px 0'>10:00</div>
+  <button onclick='go(5)'>5 min</button> <button onclick='go(10)'>10 min</button>
+  <button onclick='go(25)'>25 min</button> <button onclick='stop()'>Arrêter</button>
+  <div id='m' style='margin-top:8px;color:#555'></div>
+</div>
+<script>
+var iv=null,left=0;
+function show(){var m=Math.floor(left/60),s=left%60;document.getElementById('t').textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
+function go(min){stop();left=min*60;show();document.getElementById('m').textContent='C est parti, une seule chose.';
+iv=setInterval(function(){left--;show();if(left<=0){stop();document.getElementById('m').textContent='Terminé. Respire, bois un verre d eau.';}},1000);}
+function stop(){if(iv){clearInterval(iv);iv=null;}}
+</script>
+""", height=190)
 
     if manquants:
         if st.button("✅ J'ai tout pris comme d'habitude (enregistrer en un clic)", key="t1_tout_pris"):
