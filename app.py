@@ -437,6 +437,33 @@ with tab1:
 
     if jour_difficile:
         st.info("🌧️ Mode jour difficile : seulement l'essentiel. Fais juste ce qui est listé ci-dessus. Tu pourras compléter le reste plus tard (tu peux revenir sur un jour passé avec le choix de date).")
+        if manquants:
+            st.write("#### 💊 Coche ce que tu as pris")
+            choix_simple = {}
+            for nom_m, manque in manquants.items():
+                st.write("**" + nom_m + "**")
+                cols_s = st.columns(max(1, len(manque)))
+                for i_s, lib_s in enumerate(manque):
+                    with cols_s[i_s]:
+                        if st.checkbox(lib_s, key="t1_simple_" + nom_m + "_" + lib_s + "_" + str(date_saisie)):
+                            choix_simple.setdefault(nom_m, []).append(lib_s)
+            if st.button("✅ Enregistrer ce que j'ai pris", key="t1_simple_save"):
+                if not choix_simple:
+                    st.warning("Coche d'abord au moins une prise.")
+                else:
+                    for nom_m, pris_l in choix_simple.items():
+                        total_s = len(pris_l) * dose_actuelle_med(meds[nom_m])
+                        row_s = {
+                            "Date": str(date_saisie), "Médicament": nom_m, "Prise": ", ".join(pris_l) + f" ({total_s} cachet(s))",
+                            "Moment Repas": meds[nom_m].get("timing", ""), "Symptômes Traitement": "Aucun",
+                            "Symptômes SOPK/Pré-Diabète": "Aucun", "Note": "Mode jour difficile"
+                        }
+                        save_row_to_supabase("historique_prises", row_s)
+                        info_s = dict(meds[nom_m])
+                        info_s["stock"] = max(0, int(info_s.get("stock", 0)) - total_s)
+                        supabase.table("medicaments").upsert({"name": nom_m, "config": info_s}).execute()
+                    st.success("🎉 Enregistré !")
+                    redemarrer()
     else:
         if not meds:
             st.info("Ajoute un médicament dans le menu à gauche pour commencer.")
