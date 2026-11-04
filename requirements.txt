@@ -1,2 +1,4 @@
-supabase
-pandas
+   streamlit
+   supabase
+   pandas
+   pypdf
