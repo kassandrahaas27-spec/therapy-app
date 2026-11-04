@@ -36,14 +36,29 @@ def redemarrer():
 # --- SYSTÈME DE CHARGEMENT SÉCURISÉ ---
 @st.cache_data(ttl=60)
 def load_db_from_supabase(table_name, columns):
+    """Charge TOUTES les lignes (Supabase en renvoie 1000 maximum par requête, on lit donc par pages)."""
     try:
-        response = supabase.table(table_name).select("*").execute()
-        if response.data:
-            df = pd.DataFrame(response.data)
+        lignes = []
+        debut = 0
+        while True:
+            try:
+                rep = supabase.table(table_name).select("*").order("id").range(debut, debut + 999).execute()
+            except Exception:
+                rep = supabase.table(table_name).select("*").range(debut, debut + 999).execute()
+            page = rep.data or []
+            lignes.extend(page)
+            if len(page) < 1000:
+                break
+            debut += 1000
+        if lignes:
+            df = pd.DataFrame(lignes)
             if "Date" in df.columns: df["Date"] = df["Date"].astype(str)
             return df
         return pd.DataFrame(columns=columns)
-    except:
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" not in msg and "does not exist" not in msg and "Could not find the table" not in msg:
+            st.warning("⚠️ Impossible de lire « " + table_name + " » : " + msg[:200] + ". Tes données ne sont pas effacées, c'est seulement la lecture qui échoue.")
         return pd.DataFrame(columns=columns)
 
 def save_row_to_supabase(table_name, data_dict):
