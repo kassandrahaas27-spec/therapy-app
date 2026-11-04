@@ -69,6 +69,109 @@ def save_row_to_supabase(table_name, data_dict):
         st.error(f"Erreur de sauvegarde Cloud ({table_name}) : {e}")
         return False
 
+# --- NOUVEAU : lecture automatique d'un PDF de prise de sang ---
+import re as _re
+
+_ANALYSES = [
+    ("HbA1c", r"hba1c|h[ée]moglobine\s+glyqu[ée]e|hb\s*a1c"),
+    ("Glycémie à jeun (labo)", r"glyc[ée]mie"),
+    ("Insuline", r"insulin[ée]?mie|insuline"),
+    ("TSH", r"\btsh\b"),
+    ("T4 libre", r"t4\s+libre|\bft4\b"),
+    ("Vitamine D", r"(?:vitamine\s+d3?\b(?:\s*\(?\s*25\s*-?\s*(?:oh|hydroxy)\w*\)?)?|25\s*-?\s*(?:oh|hydroxy)\w*(?:\s*vitamine\s+d)?)"),
+    ("Vitamine B12", r"vitamine\s+b\s*12|\bb\s*12\b|cobalamine"),
+    ("Folates (B9)", r"folates?|vitamine\s+b\s*9"),
+    ("Ferritine", r"ferritine"),
+    ("Fer sérique", r"fer\s+s[ée]rique|\bfer\b"),
+    ("Cholestérol total", r"cholest[ée]rol\s+total|cholest[ée]rol\s+total"),
+    ("HDL", r"\bhdl\b"),
+    ("LDL", r"\bldl\b"),
+    ("Triglycérides", r"triglyc[ée]rides?"),
+    ("AMH", r"\bamh\b|anti.?m[uü]llerien"),
+    ("FSH", r"\bfsh\b"),
+    ("LH", r"\blh\b"),
+    ("Œstradiol", r"[oœ]strad[iy]ol|estradiol"),
+    ("Progestérone", r"progest[ée]rone"),
+    ("Testostérone", r"testost[ée]rone"),
+    ("Prolactine", r"prolactine"),
+    ("SHBG", r"\bshbg\b"),
+    ("CRP", r"\bcrp\b|prot[ée]ine\s+c\s+r[ée]active"),
+    ("Hémoglobine", r"h[ée]moglobine(?!\s+glyqu)"),
+    ("Créatinine", r"cr[ée]atinine"),
+    ("ASAT", r"\basat\b|\bsgot\b"),
+    ("ALAT", r"\balat\b|\bsgpt\b"),
+    ("Gamma GT", r"gamma\s*-?\s*gt|\bggt\b"),
+]
+_UNITES = r"(%|g/l|mg/l|mg/dl|g/dl|mmol/l|[µμu]mol/l|nmol/l|pmol/l|ng/ml|pg/ml|ng/l|ng/dl|[µμu]g/l|[µμu]g/dl|m?ui/l|[µμu]ui/ml|[µμu]ui/l|mui/ml|u/l|ui/l|iu/l|miu/l|g/24h|/mm3|giga/l|t/l)"
+_NUM = r"(\d+(?:[.,]\d+)?)"
+
+def _nombre(t):
+    return float(t.replace(",", "."))
+
+def analyser_texte_bilan(texte):
+    """Repère les analyses connues dans le texte d'un PDF de labo. Renvoie une liste de dictionnaires."""
+    lignes = [l.strip() for l in texte.splitlines() if l.strip()]
+    resultats, deja = [], set()
+    for nom, motif in _ANALYSES:
+        for i, ligne in enumerate(lignes):
+            m = _re.search(motif, ligne, flags=_re.IGNORECASE)
+            if not m:
+                continue
+            reste = ligne[m.end():]
+            if not _re.search(_NUM, reste) and i + 1 < len(lignes):
+                reste = lignes[i + 1]
+            # on ignore les lignes de commentaire / norme sans valeur claire
+            mv = _re.search(_NUM, reste)
+            if not mv:
+                continue
+            valeur = _nombre(mv.group(1))
+            apres = reste[mv.end():]
+            mu = _re.search(_UNITES, apres, flags=_re.IGNORECASE)
+            unite = mu.group(1) if mu else ""
+            ref_txt, bas, haut = "", None, None
+            mr = _re.search(_NUM + r"\s*(?:-|–|à|a)\s*" + _NUM, apres)
+            if mr:
+                bas, haut = _nombre(mr.group(1)), _nombre(mr.group(2))
+                ref_txt = mr.group(1) + " - " + mr.group(2)
+            else:
+                mi = _re.search(r"([<>≤≥]=?)\s*" + _NUM, apres)
+                if mi:
+                    if mi.group(1).startswith("<") or mi.group(1) == "≤":
+                        haut = _nombre(mi.group(2))
+                    else:
+                        bas = _nombre(mi.group(2))
+                    ref_txt = mi.group(1) + " " + mi.group(2)
+            if bas is not None and valeur < bas:
+                statut = "⬇️ en dessous de la norme du labo"
+            elif haut is not None and valeur > haut:
+                statut = "⬆️ au-dessus de la norme du labo"
+            elif bas is not None or haut is not None:
+                statut = "✅ dans la norme du labo"
+            else:
+                statut = "❔ norme non trouvée"
+            if nom not in deja:
+                deja.add(nom)
+                resultats.append({"Examen": nom, "Valeur": valeur, "Unité": unite, "Norme du labo": ref_txt, "Statut": statut})
+            break
+    return resultats
+
+def date_dans_texte_bilan(texte):
+    m0 = _re.search(r"pr[ée]l[èe]v\w*[^\d\n]{0,25}(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})", texte, flags=_re.IGNORECASE)
+    if m0:
+        try:
+            return date(int(m0.group(3)), int(m0.group(2)), int(m0.group(1)))
+        except ValueError:
+            pass
+    for m in _re.finditer(r"(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})", texte):
+        j, mo, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= j <= 31 and 1 <= mo <= 12 and 2000 <= a <= 2100:
+            try:
+                return date(a, mo, j)
+            except ValueError:
+                continue
+    return None
+
+
 # --- NOUVEAU : tableau modifiable (utilisé dans l'onglet Historique) ---
 def editeur_table(df, table_name, key, choix=None):
     """Tableau modifiable : clique sur une case, change la valeur, puis enregistre."""
@@ -1575,6 +1678,54 @@ with tab4:
     # ---------- RÉSULTATS DE PRISES DE SANG ----------
     st.write("### 🧪 Mes résultats de prises de sang")
     st.caption("HbA1c, hormones, vitamines : note ici tes résultats pour les retrouver et voir l'évolution.")
+    with st.expander("📄 Importer un PDF de prise de sang (lecture automatique)", expanded=False):
+        st.caption("Le PDF est lu directement dans l'appli (il n'est pas envoyé ailleurs). Ça marche avec les PDF de laboratoire contenant du texte, pas avec une simple photo ou un scan.")
+        pdf_b = st.file_uploader("Choisis le PDF du laboratoire", type=["pdf"], key="t4_pdf_bilan")
+        if pdf_b is not None:
+            texte_pdf = ""
+            try:
+                from pypdf import PdfReader
+                lecteur_pdf = PdfReader(pdf_b)
+                texte_pdf = "\n".join((pg.extract_text() or "") for pg in lecteur_pdf.pages)
+            except ImportError:
+                st.error("Il manque la bibliothèque « pypdf » : ajoute une ligne « pypdf » dans le fichier requirements.txt de l'appli, puis redémarre.")
+            except Exception as e_pdf:
+                st.error("Je n'arrive pas à ouvrir ce PDF : " + str(e_pdf)[:200])
+            if pdf_b is not None and not texte_pdf.strip():
+                st.warning("Je ne trouve pas de texte dans ce PDF (probablement un scan ou une photo). Essaie de télécharger la version PDF d'origine depuis le site du laboratoire, ou saisis les valeurs à la main ci-dessous.")
+            elif texte_pdf.strip():
+                trouves = analyser_texte_bilan(texte_pdf)
+                date_pdf = date_dans_texte_bilan(texte_pdf) or date.today()
+                date_imp = st.date_input("🗓️ Date de la prise de sang (vérifie-la)", value=min(date_pdf, date.today()), max_value=date.today(), key="t4_pdf_date")
+                if not trouves:
+                    st.info("Je n'ai reconnu aucune analyse connue dans ce PDF. Tu peux voir le texte lu ci-dessous et saisir les valeurs à la main.")
+                else:
+                    st.write("**Voici ce que j'ai trouvé. Décoche ce qui est faux, puis enregistre :**")
+                    choisis = []
+                    for i_t, r_t in enumerate(trouves):
+                        ref_aff = (" (norme labo : " + r_t["Norme du labo"] + ")") if r_t["Norme du labo"] else ""
+                        etiquette = r_t["Examen"] + " : " + str(r_t["Valeur"]) + " " + r_t["Unité"] + ref_aff + " : " + r_t["Statut"]
+                        if st.checkbox(etiquette, value=True, key="t4_pdf_ck_" + str(i_t) + "_" + pdf_b.name):
+                            choisis.append(r_t)
+                    for r_t in trouves:
+                        if r_t["Examen"] == "HbA1c" and 5.7 <= r_t["Valeur"] <= 6.4:
+                            st.info("ℹ️ Repère : une HbA1c entre 5,7 et 6,4 % correspond à la zone de pré-diabète. À discuter avec ton médecin.")
+                        if r_t["Examen"].startswith("Glycémie") and r_t["Unité"].lower() == "g/l" and 1.0 <= r_t["Valeur"] < 1.26:
+                            st.info("ℹ️ Repère : une glycémie à jeun entre 1,00 et 1,25 g/L correspond à la zone de pré-diabète. À discuter avec ton médecin.")
+                    st.caption("Ce tri est automatique et peut se tromper : vérifie toujours avec ton PDF. Ce n'est pas un diagnostic, c'est à interpréter avec ton médecin.")
+                    if st.button("💾 Enregistrer les résultats cochés", key="t4_pdf_save") and choisis:
+                        tous_ok = True
+                        for r_t in choisis:
+                            note_pdf = "Import PDF" + ((" | norme labo " + r_t["Norme du labo"]) if r_t["Norme du labo"] else "")
+                            if not save_row_to_supabase("resultats_bilans", {"Date": str(date_imp), "Examen": r_t["Examen"], "Valeur": r_t["Valeur"], "Unité": r_t["Unité"], "Note": note_pdf}):
+                                tous_ok = False
+                                break
+                        if tous_ok:
+                            st.success("🎉 " + str(len(choisis)) + " résultat(s) enregistré(s) !")
+                            redemarrer()
+                with st.expander("Voir le texte lu dans le PDF"):
+                    st.text(texte_pdf[:6000])
+    st.write("**Ou saisir à la main :**")
     bb1, bb2 = st.columns(2)
     with bb1:
         b_date = st.date_input("🗓️ Date de la prise de sang", value=date.today(), max_value=date.today(), key="t4_b_date")
