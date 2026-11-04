@@ -1683,15 +1683,20 @@ with tab4:
         pdf_b = st.file_uploader("Choisis le PDF du laboratoire", type=["pdf"], key="t4_pdf_bilan")
         if pdf_b is not None:
             texte_pdf = ""
+            pdf_erreur = False
             try:
                 from pypdf import PdfReader
                 lecteur_pdf = PdfReader(pdf_b)
                 texte_pdf = "\n".join((pg.extract_text() or "") for pg in lecteur_pdf.pages)
             except ImportError:
+                pdf_erreur = True
                 st.error("Il manque la bibliothèque « pypdf » : ajoute une ligne « pypdf » dans le fichier requirements.txt de l'appli, puis redémarre.")
             except Exception as e_pdf:
+                pdf_erreur = True
                 st.error("Je n'arrive pas à ouvrir ce PDF : " + str(e_pdf)[:200])
-            if pdf_b is not None and not texte_pdf.strip():
+            if pdf_erreur:
+                pass
+            elif not texte_pdf.strip():
                 st.warning("Je ne trouve pas de texte dans ce PDF (probablement un scan ou une photo). Essaie de télécharger la version PDF d'origine depuis le site du laboratoire, ou saisis les valeurs à la main ci-dessous.")
             elif texte_pdf.strip():
                 trouves = analyser_texte_bilan(texte_pdf)
