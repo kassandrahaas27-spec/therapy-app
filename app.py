@@ -281,16 +281,23 @@ def sauver_config(id_cfg, cfg):
         return False
 
 def bloc_suppression(df, table_name, key, colonnes_label):
+    """Supprime une ou plusieurs lignes d'un coup."""
     if df.empty or "id" not in df.columns:
         return
     opts = {}
-    for _, r in df.iterrows():
+    for _, r in df.sort_values(by="Date", ascending=False).iterrows() if "Date" in df.columns else df.iterrows():
         etiquette = " - ".join(str(r.get(c, "")) for c in colonnes_label) + " (n°" + str(r["id"]) + ")"
         opts[etiquette] = r["id"]
-    choix_s = st.selectbox("Supprimer une ligne", list(opts.keys()), key=key + "_sel")
-    if st.button("🚨 Supprimer", key=key + "_btn"):
+    choix_s = st.multiselect("Supprimer une ou plusieurs lignes (tu peux en choisir plusieurs)", list(opts.keys()), key=key + "_sel")
+    if choix_s:
+        st.warning(str(len(choix_s)) + " ligne(s) sélectionnée(s). La suppression est définitive.")
+    if st.button("🚨 Supprimer la sélection", key=key + "_btn"):
+        if not choix_s:
+            st.info("Choisis d'abord au moins une ligne.")
+            return
         try:
-            supabase.table(table_name).delete().eq("id", int(opts[choix_s])).execute()
+            ids = [int(opts[c]) for c in choix_s]
+            supabase.table(table_name).delete().in_("id", ids).execute()
         except Exception as e:
             st.error("Erreur de suppression : " + str(e))
             return
