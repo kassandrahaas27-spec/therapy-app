@@ -223,6 +223,17 @@ def maj_stock(nom, config, nouveau_stock):
     redemarrer()
 
 # --- NOUVEAU : petits outils communs ---
+def moment_pour_heure(hhmm):
+    """Rattache une heure précise au moment de la journée correspondant."""
+    try:
+        h = int(str(hhmm)[:2])
+    except ValueError:
+        return "prend_soir"
+    if h < 11: return "prend_matin"
+    if h < 15: return "prend_midi"
+    if h < 21: return "prend_soir"
+    return "prend_coucher"
+
 MOMENTS_PRISE = [("Matin", "prend_matin", True), ("Midi", "prend_midi", False), ("Soir", "prend_soir", True), ("Coucher", "prend_coucher", False)]
 
 def lundi_de(d_txt):
@@ -478,6 +489,9 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir_" + _kmed)
     p_coucher = st.sidebar.checkbox("🛌 Coucher (ex : mélatonine)", value=default_c, key="side_p_coucher_" + _kmed)
     
+    if heure_precise and not (p_matin or p_midi or p_soir or p_coucher):
+        _lib_auto = {"prend_matin": "Matin", "prend_midi": "Midi", "prend_soir": "Soir", "prend_coucher": "Coucher"}[moment_pour_heure(heure_precise)]
+        st.sidebar.info("Aucun moment coché : l'heure " + heure_precise + " sera rattachée au moment « " + _lib_auto + " », pour que la prise apparaisse dans ta liste du jour.")
     date_debut_traitement = st.sidebar.date_input("📅 Date de début du traitement", value=(datetime.strptime(default_start, "%Y-%m-%d").date() if default_start else date.today()), key="side_start_date_" + _kmed)    
 
     is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers)", value=default_is_evo, key="side_is_evo_cb_" + _kmed)
@@ -495,6 +509,9 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
         if not med_name:
             st.sidebar.error("Écris d'abord le nom du médicament.")
         else:
+            if heure_precise and not (p_matin or p_midi or p_soir or p_coucher):
+                _c_auto = moment_pour_heure(heure_precise)
+                p_matin, p_midi, p_soir, p_coucher = (_c_auto == "prend_matin"), (_c_auto == "prend_midi"), (_c_auto == "prend_soir"), (_c_auto == "prend_coucher")
             config_med = {
                 "stock": int(stock_actuel), "timing": timing, "heure_precise": heure_precise, "start_date": str(date_debut_traitement), "is_evolution": is_evolution, "phases": phases_save,                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "prend_coucher": p_coucher, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
@@ -549,7 +566,7 @@ if choix_menu == _NOMS_MENU[0]:
         zone_liste.caption("Ajoute un médicament dans le menu à gauche pour commencer.")
     elif manquants:
         for nom_m, manque in manquants.items():
-            zone_liste.write("💊 **" + nom_m + "** : " + ", ".join(manque) + " à enregistrer")
+            zone_liste.write("💊 **" + nom_m + "** : " + ", ".join(manque) + (" (⏰ " + str(meds[nom_m].get("heure_precise")) + ")" if meds[nom_m].get("heure_precise") else "") + " à enregistrer")
     else:
         zone_liste.success("💊 Tous tes traitements sont enregistrés pour ce jour.")
 
@@ -710,7 +727,7 @@ function stop(){if(iv){clearInterval(iv);iv=null;}}
                     except Exception as e:
                         st.warning("Décompte indisponible : " + str(e))
 
-                st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir ' if info.get('prend_soir') else ''}{'🛌 Coucher' if info.get('prend_coucher') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
+                st.caption(f"Moments requis : {'🌅 Matin ' if info.get('prend_matin') else ''}{'☀️ Midi ' if info.get('prend_midi') else ''}{'🌙 Soir ' if info.get('prend_soir') else ''}{'🛌 Coucher' if info.get('prend_coucher') else ''}{(' ⏰ ' + str(info.get('heure_precise'))) if info.get('heure_precise') else ''} — Prendre **{dose_actuelle} cachet(s)** ({info.get('timing')})")
                 # --- STOCK + ALERTE DE RACHAT ---
                 stock_restant = int(info.get("stock", 0))
                 nb_moments = sum([1 if info.get("prend_matin") else 0, 1 if info.get("prend_midi") else 0, 1 if info.get("prend_soir") else 0, 1 if info.get("prend_coucher") else 0])
