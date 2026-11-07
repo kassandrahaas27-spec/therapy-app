@@ -2242,10 +2242,10 @@ def _bloc_plan(code, plan):
     with st.expander("Voir / modifier mon plan", expanded=not bool(plan)):
         valeurs = {}
         for cle, lib, exemple in conf["champs"]:
-            valeurs[cle] = st.text_area(lib, value=plan.get(cle, ""), key="n_" + code + "_" + cle, placeholder=exemple)
-        valeurs["phrase"] = st.text_input("🗨️ Ma phrase pour me recentrer", value=plan.get("phrase", ""), key="n_" + code + "_phrase")
-        valeurs["contact"] = st.text_input("📞 Qui appeler", value=plan.get("contact", ""), key="n_" + code + "_contact", placeholder="Nom et numéro")
-        if st.button("💾 Enregistrer mon plan", key="n_" + code + "_save_plan"):
+            valeurs[cle] = st.text_area(lib, value=plan.get(cle, ""), key="n_plan_" + code + "_" + cle, placeholder=exemple)
+        valeurs["phrase"] = st.text_input("🗨️ Ma phrase pour me recentrer", value=plan.get("phrase", ""), key="n_plan_" + code + "_phrase")
+        valeurs["contact"] = st.text_input("📞 Qui appeler", value=plan.get("contact", ""), key="n_plan_" + code + "_contact", placeholder="Nom et numéro")
+        if st.button("💾 Enregistrer mon plan", key="n_plan_" + code + "_save"):
             if sauver_config(conf["cfg"], valeurs):
                 st.success("🎉 Plan enregistré !")
                 redemarrer()
@@ -2261,7 +2261,7 @@ def _bloc_checkin(code):
         valeurs_scores[col] = st.slider(lib, 0, 10, defaut, key="n_" + code + "_" + col)
     n_events = st.multiselect("Ce qui s'est passé", conf["evenements"], key="n_" + code + "_events")
     n_decl = st.multiselect("Déclencheurs", conf["declencheurs"], key="n_" + code + "_decl")
-    n_aide = st.text_input("Ce qui m'a aidée", key="n_" + code + "_aide")
+    n_aide = st.text_input("Ce qui m'a aidée", key="n_checkin_" + code + "_aide")
     n_note = st.text_input("Note libre", key="n_" + code + "_note")
     if st.button("💾 Enregistrer mon check-in", key="n_" + code + "_save"):
         ligne = {"Date": str(n_date), "Surcharge sensorielle (0-10)": None, "Anxiété / hypervigilance (0-10)": None, "Concentration (0-10)": None, "Agitation / impulsivité (0-10)": None,
