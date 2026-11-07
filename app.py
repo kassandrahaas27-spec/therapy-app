@@ -11,9 +11,11 @@ st.markdown("""
 /* Page : large mais lisible */
 .block-container{max-width:1250px; padding-top:2rem; padding-left:2rem; padding-right:2rem;}
 @media (max-width:640px){.block-container{padding-left:0.8rem; padding-right:0.8rem;}}
-/* Menu principal : boutons sur plusieurs lignes, jamais coupés */
-div[data-testid="stRadio"] div[role="radiogroup"]{flex-wrap:wrap; gap:8px 10px;}
-div[data-testid="stRadio"] div[role="radiogroup"] > label{background:#f0f2f6; border-radius:999px; padding:6px 14px; margin:0;}
+/* Menu principal : look d'onglets, qui passent à la ligne */
+div[data-testid="stRadio"] div[role="radiogroup"]{flex-wrap:wrap; gap:4px 18px; border-bottom:1px solid #e6e6e6; padding-bottom:0;}
+div[data-testid="stRadio"] div[role="radiogroup"] > label{background:none; border-radius:0; padding:8px 2px; margin:0; border-bottom:3px solid transparent; cursor:pointer;}
+div[data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child{display:none;}
+div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked){border-bottom:3px solid #ff4b4b; color:#ff4b4b;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -490,11 +492,9 @@ if meds:
 # --- ONGLETS PRINCIPAUX ---
 _NOMS_MENU = ["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧠 TDAH · TSA · SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"]
 choix_menu = st.radio("Menu", _NOMS_MENU, horizontal=True, label_visibility="collapsed", key="menu_principal")
-_holders_menu = [st.empty() for _ in _NOMS_MENU]
-tab1, tab2, tab3, tab4, tab6, tab8, tab7, tab5 = [h.container() for h in _holders_menu]
 
 # --- TAB 1 : TABLEAU DE BORD ---
-with tab1:
+if choix_menu == _NOMS_MENU[0]:
     st.subheader("📅 Prises du jour & Vos Symptômes")
     st.caption(f"Mode actif : **{parcours_mode}**")
 
@@ -788,7 +788,7 @@ def carnet_pma():
         bloc_suppression(pma_df, "suivi_pma", "pma_del", ["Date", "Étape Protocole"])
 
 # --- TAB 2 : MON SUIVI FÉMININ ---
-with tab2:
+if choix_menu == _NOMS_MENU[1]:
     if parcours_mode == "Suivi de Cycle & Essai Bébé":
         st.subheader("🌸 Suivi de Cycle, Courbe & Probabilité SOPK")
         
@@ -1238,7 +1238,7 @@ with tab2:
         carnet_pma()
 
 # --- TAB 3 : RDV MEDICAUX ---
-with tab3:
+if choix_menu == _NOMS_MENU[2]:
     st.subheader("📅 Gestion de tes Rendez-vous")
 
     st.write("### 📞 RDV à reprendre")
@@ -1363,7 +1363,7 @@ with tab3:
         bloc_questions("t3")
 
 # --- TAB 4 : SUIVI NUTRITION ---
-with tab4:
+if choix_menu == _NOMS_MENU[3]:
     st.subheader("🥗 Mon Suivi Métabolique")
     # ---------- STOCK MATÉRIEL GLYCÉMIE ----------
     st.write("### 🧰 Mon matériel de glycémie")
@@ -1930,7 +1930,7 @@ with tab4:
         st.dataframe(bilan.iloc[::-1].reset_index(drop=True), use_container_width=True)
         st.caption("Regarde si les semaines où le poids monte sont celles où le traitement ou les conseils ont baissé. Ce tableau sert à comprendre, pas à te juger.")
 # --- TAB 5 : HISTORIQUE DIRECT ---
-with tab5:
+if choix_menu == _NOMS_MENU[7]:
     st.subheader("📜 Historique Général Cloud")
     st.write("**Mon journal de bord des prises du jour :**")
     if not history_df.empty:
@@ -2003,7 +2003,7 @@ with tab5:
     bloc_suppression(bilans_df, "resultats_bilans", "t5_bilans_del", ["Date", "Examen", "Valeur"])
 
 # --- TAB 6 : DOULEUR, FATIGUE, SOMMEIL ---
-with tab6:
+if choix_menu == _NOMS_MENU[4]:
     st.subheader("🧘 Douleur, fatigue et sommeil")
     st.caption("Quelques secondes par jour. Ça aide tes médecins et ton kiné à voir ce qui change selon ton cycle, ton sommeil et tes efforts.")
     d_date = st.date_input("🗓️ Jour", value=date.today(), max_value=date.today(), key="t6_date")
@@ -2072,7 +2072,7 @@ with tab6:
         st.caption("Aucun enregistrement pour le moment.")
 
 # --- TAB 8 : TDAH · TSA · SPT ---
-with tab8:
+if choix_menu == _NOMS_MENU[5]:
     import streamlit.components.v1 as components_n
     st.subheader("🧠 TDAH · TSA · SPT : mes outils")
     st.caption("Des repères pratiques, pas un diagnostic ni un traitement : ils ne remplacent pas ton équipe de soin. En détresse ou en danger : 3114 (prévention du suicide, 24h/24) ou 15 / 112.")
@@ -2261,7 +2261,7 @@ function stop(){ run=false; clearTimeout(to); document.getElementById('l').textC
         st.caption("Aucun check-in enregistré pour le moment.")
 
 # --- TAB 7 : FICHE POUR MES MÉDECINS ---
-with tab7:
+if choix_menu == _NOMS_MENU[6]:
     st.subheader("📄 Fiche pour mes médecins")
     st.caption("Un résumé à montrer ou à imprimer avant un rendez-vous. Remplis une fois les 4 champs, le reste se met à jour tout seul.")
     cfg_f = charger_config(4)
@@ -2430,8 +2430,4 @@ with tab7:
     with dl2:
         st.markdown(lien_telechargement(corps_txt, "fiche_medecins_" + str(date.today()) + ".txt", "text/plain", "⬇️ Version texte"), unsafe_allow_html=True)
     st.caption("Ces informations viennent de ce que tu as noté dans l'appli. Elles ne remplacent pas un dossier médical.")
-
-# --- Affiche uniquement l'onglet choisi dans le menu ---
-for _h, _n in zip(_holders_menu, _NOMS_MENU):
-    if _n != choix_menu:
-        _h.empty()
+    
