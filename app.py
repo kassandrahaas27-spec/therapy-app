@@ -174,6 +174,67 @@ def date_dans_texte_bilan(texte):
     return None
 
 
+# --- Normes de référence (repères généraux, la norme du laboratoire prévaut) ---
+_REFS_GENERALES = [
+    (r"hba1c|glyqu", "4,0 - 5,6"),
+    (r"glyc[ée]mie", "0,70 - 1,10"),
+    (r"cholest[ée]rol total", "< 2,00"),
+    (r"\bhdl\b", "> 0,40"),
+    (r"\bldl\b", "< 1,60"),
+    (r"triglyc", "< 1,50"),
+    (r"h[ée]moglobine", "12,0 - 16,0"),
+    (r"cr[ée]atinine", "45 - 90"),
+    (r"h[ée]maties", "3,9 - 5,2"),
+    (r"\btsh\b", "0,4 - 4,0"),
+    (r"vitamine d|25.?oh", "30 - 100"),
+    (r"b\s*12|cobalamine", "200 - 900"),
+    (r"ferritine", "15 - 150"),
+    (r"prolactine", "4 - 25"),
+    (r"\bcrp\b", "< 5"),
+    (r"\basat\b", "< 35"),
+    (r"\balat\b", "< 35"),
+    (r"gamma|\bggt\b", "< 40"),
+]
+_PHASES_HORMONES = {
+    "FSH": [("Phase folliculaire (début de cycle)", 3.5, 12.5), ("Pic d'ovulation", 4.7, 21.5), ("Phase lutéale (après l'ovulation)", 1.7, 7.7), ("Ménopause", 25.8, 134.8)],
+    "LH": [("Phase folliculaire (début de cycle)", 2.4, 12.6), ("Pic d'ovulation", 14.0, 95.6), ("Phase lutéale (après l'ovulation)", 1.0, 11.4), ("Ménopause", 7.7, 58.5)],
+}
+
+def hormone_a_phases(nom):
+    n = str(nom).lower()
+    if _re.search(r"\bfsh\b", n): return "FSH"
+    if _re.search(r"\blh\b", n): return "LH"
+    return None
+
+def norme_generale(nom):
+    n = str(nom).lower()
+    for motif, norme in _REFS_GENERALES:
+        if _re.search(motif, n):
+            return norme
+    return ""
+
+def lire_norme(txt):
+    """Renvoie (bas, haut) à partir d'un texte comme '0,70 - 1,10', '< 2' ou '> 0,4'."""
+    t = str(txt or "")
+    mr = _re.search(_NUM + r"\s*(?:-|–|à)\s*" + _NUM, t)
+    if mr:
+        return _nombre(mr.group(1)), _nombre(mr.group(2))
+    mi = _re.search(r"([<>≤≥])\s*" + _NUM, t)
+    if mi:
+        v = _nombre(mi.group(2))
+        return (None, v) if mi.group(1) in "<≤" else (v, None)
+    return None, None
+
+def juger_valeur(valeur, bas, haut):
+    if bas is not None and valeur < bas:
+        return "⬇️ en dessous"
+    if haut is not None and valeur > haut:
+        return "⬆️ au-dessus"
+    if bas is not None or haut is not None:
+        return "✅ dans la norme"
+    return ""
+
+
 # --- NOUVEAU : tableau modifiable (utilisé dans l'onglet Historique) ---
 def editeur_table(df, table_name, key, choix=None):
     """Tableau modifiable : clique sur une case, change la valeur, puis enregistre."""
@@ -1780,12 +1841,16 @@ if choix_menu == _NOMS_MENU[3]:
                 else:
                     st.caption("Je n'ai rien reconnu avec certitude, donc je ne devine rien : remplis les lignes à partir du texte ci-dessus.")
                 st.write("**2. Les résultats à enregistrer :**")
+                phase_cycle = st.selectbox("🌸 Moment du cycle de la prise de sang (utile pour FSH et LH)", ["Je ne sais pas", "Phase folliculaire (début de cycle)", "Pic d'ovulation", "Phase lutéale (après l'ovulation)", "Ménopause"], key="t4_pdf_phase")
                 nb_vides = 4
                 lignes_edit = list(trouves) + [{"Examen": "", "Valeur": "", "Unité": "", "Norme du labo": "", "Statut": ""} for _ in range(nb_vides)]
+                en_tete = st.columns([0.6, 2.6, 1.3, 1.3, 2.0, 2.2])
+                for col_e, lib_e in zip(en_tete, ["", "Examen", "Valeur", "Unité", "Doit être entre", "Résultat"]):
+                    col_e.caption(lib_e)
                 lignes_ok = []
                 for i_t, r_t in enumerate(lignes_edit):
                     k_t = "t4_pdf_" + str(i_t) + "_" + pdf_b.name
-                    c0, c1, c2, c3 = st.columns([0.6, 3, 1.6, 1.6])
+                    c0, c1, c2, c3, c4, c5 = st.columns([0.6, 2.6, 1.3, 1.3, 2.0, 2.2])
                     with c0:
                         garde = st.checkbox("✔", value=bool(r_t["Examen"]), key=k_t + "_ck")
                     with c1:
@@ -1794,8 +1859,35 @@ if choix_menu == _NOMS_MENU[3]:
                         val_e = st.text_input("Valeur", value=str(r_t["Valeur"]).replace(".", ",") if r_t["Valeur"] != "" else "", key=k_t + "_val", label_visibility="collapsed", placeholder="Valeur")
                     with c3:
                         uni_e = st.text_input("Unité", value=r_t["Unité"], key=k_t + "_uni", label_visibility="collapsed", placeholder="Unité")
+                    hormone = hormone_a_phases(nom_e)
+                    norme_lab = "" if hormone else r_t.get("Norme du labo", "")
+                    norme_defaut = norme_lab or ("" if hormone else norme_generale(nom_e))
+                    source_n = "labo" if norme_lab else ("repère général" if norme_defaut else "")
+                    if hormone and phase_cycle != "Je ne sais pas":
+                        for lib_ph, b_ph, h_ph in _PHASES_HORMONES[hormone]:
+                            if lib_ph == phase_cycle:
+                                norme_defaut = str(b_ph).replace(".", ",") + " - " + str(h_ph).replace(".", ","); source_n = "repère " + lib_ph.split(" (")[0].lower()
+                    with c4:
+                        norme_e = st.text_input("Norme", value=norme_defaut, key=k_t + "_norme_" + phase_cycle[:4] + "_" + nom_e[:6], label_visibility="collapsed", placeholder="ex : 0,70 - 1,10")
+                    verdict = ""
+                    try:
+                        v_float = float(val_e.replace(",", ".").replace(" ", "")) if val_e.strip() else None
+                    except ValueError:
+                        v_float = None
+                    if v_float is not None:
+                        if hormone and not norme_e.strip():
+                            compat = [lib_ph.split(" (")[0] for lib_ph, b_ph, h_ph in _PHASES_HORMONES[hormone] if b_ph <= v_float <= h_ph]
+                            verdict = ("Compatible : " + ", ".join(compat)) if compat else "Hors des repères connus"
+                        else:
+                            bas_e, haut_e = lire_norme(norme_e)
+                            verdict = juger_valeur(v_float, bas_e, haut_e)
+                    with c5:
+                        st.write(verdict if verdict else " ")
+                    if hormone and not norme_e.strip():
+                        st.caption("Selon la phase du cycle, " + hormone + " : " + " ; ".join(lib_ph.split(" (")[0] + " " + str(b_ph).replace(".", ",") + " à " + str(h_ph).replace(".", ",") for lib_ph, b_ph, h_ph in _PHASES_HORMONES[hormone]) + ". Choisis ta phase ci-dessus pour une seule norme. Repères généraux : la norme de ton laboratoire prévaut.")
                     if garde and nom_e.strip() and val_e.strip():
-                        lignes_ok.append((nom_e.strip(), val_e.strip(), uni_e.strip(), r_t.get("Norme du labo", "")))
+                        lignes_ok.append((nom_e.strip(), val_e.strip(), uni_e.strip(), (norme_e.strip() + (" (" + source_n + ")" if source_n else "")) if norme_e.strip() else ""))
+                st.caption("Les normes « repère général » sont indicatives (adulte, femme) : celle de ton laboratoire, imprimée sur ton PDF, prévaut. Tu peux la modifier.")
                 st.caption("Ce n'est pas un diagnostic : c'est à interpréter avec ton médecin.")
                 if st.button("💾 Enregistrer les lignes cochées", key="t4_pdf_save"):
                     if not lignes_ok:
