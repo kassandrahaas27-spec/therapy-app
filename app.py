@@ -435,6 +435,7 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     default_nb_cachet = 1
     default_dur1 = 7
     default_d2 = 2
+    default_start = ""
     
     if med_mode == "Modifier un existant" and meds:
         current_med_name = st.sidebar.selectbox("Choisir le médicament", list(meds.keys()), key="side_select_med")
@@ -446,43 +447,54 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
         default_s = info_m.get("prend_soir", True)
         default_c = info_m.get("prend_coucher", False)
         default_is_evo = info_m.get("is_evolution", False)
+        default_start = info_m.get("start_date", "")
+        _ph = info_m.get("phases") or []
+        if default_is_evo and len(_ph) >= 2:
+            default_nb_cachet = int(_ph[0].get("dose", 1)); default_dur1 = int(_ph[0].get("duration", 7)); default_d2 = int(_ph[1].get("dose", 2))
+        elif _ph:
+            default_nb_cachet = int(_ph[0].get("dose", 1))
+        else:
+            default_nb_cachet = int(info_m.get("nb_cachet_par_repas", 1))
 
-    med_name = st.sidebar.text_input("Nom du médicament (ex: Metformine)", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name").strip()
-    stock_actuel = st.sidebar.number_input("Stock de comprimés", min_value=0, value=default_stock, key="side_med_stock")
-    timing = st.sidebar.selectbox("Moment lié au repas", ["Début de repas", "Milieu de repas", "Fin de repas"], index=0, key="side_med_timing")
+    _kmed = (med_mode[:3] + "_" + (current_med_name or "nouveau")).replace(" ", "_")
+    med_name = st.sidebar.text_input("Nom du médicament (ex: Metformine)", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name_" + _kmed).strip()
+    stock_actuel = st.sidebar.number_input("Stock de comprimés", min_value=0, value=default_stock, key="side_med_stock_" + _kmed)
+    timing = st.sidebar.selectbox("Moment lié au repas", ["Début de repas", "Milieu de repas", "Fin de repas"], index=(["Début de repas", "Milieu de repas", "Fin de repas"].index(default_timing) if default_timing in ["Début de repas", "Milieu de repas", "Fin de repas"] else 0), key="side_med_timing_" + _kmed)
     _hp_defaut = ""
     if med_mode == "Modifier un existant" and meds and current_med_name:
         _hp_defaut = str(meds[current_med_name].get("heure_precise", "") or "")
-    a_heure = st.sidebar.checkbox("⏰ À prendre à une heure précise", value=bool(_hp_defaut), key="side_med_heure_cb")
+    a_heure = st.sidebar.checkbox("⏰ À prendre à une heure précise", value=bool(_hp_defaut), key="side_med_heure_cb_" + _kmed)
     heure_precise = ""
     if a_heure:
         try:
             _h0 = datetime.strptime(_hp_defaut, "%H:%M").time() if _hp_defaut else datetime.strptime("08:00", "%H:%M").time()
         except ValueError:
             _h0 = datetime.strptime("08:00", "%H:%M").time()
-        heure_precise = st.sidebar.time_input("Heure de prise", value=_h0, key="side_med_heure").strftime("%H:%M")
+        heure_precise = st.sidebar.time_input("Heure de prise", value=_h0, key="side_med_heure_" + _kmed).strftime("%H:%M")
     
     st.sidebar.markdown("**Moments de prise :**")
-    p_matin = st.sidebar.checkbox("🌅 Matin", value=default_m, key="side_p_matin")
-    p_midi = st.sidebar.checkbox("☀️ Midi", value=default_mi, key="side_p_midi")
-    p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir")
-    p_coucher = st.sidebar.checkbox("🛌 Coucher (ex : mélatonine)", value=default_c, key="side_p_coucher")
+    p_matin = st.sidebar.checkbox("🌅 Matin", value=default_m, key="side_p_matin_" + _kmed)
+    p_midi = st.sidebar.checkbox("☀️ Midi", value=default_mi, key="side_p_midi_" + _kmed)
+    p_soir = st.sidebar.checkbox("🌙 Soir", value=default_s, key="side_p_soir_" + _kmed)
+    p_coucher = st.sidebar.checkbox("🛌 Coucher (ex : mélatonine)", value=default_c, key="side_p_coucher_" + _kmed)
     
-    date_debut_traitement = st.sidebar.date_input("📅 Date de début du traitement", value=date.today(), key="side_start_date")    
+    date_debut_traitement = st.sidebar.date_input("📅 Date de début du traitement", value=(datetime.strptime(default_start, "%Y-%m-%d").date() if default_start else date.today()), key="side_start_date_" + _kmed)    
 
-    is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers)", value=default_is_evo, key="side_is_evo_cb")
+    is_evolution = st.sidebar.checkbox("🔄 Ce traitement est évolutif (Paliers)", value=default_is_evo, key="side_is_evo_cb_" + _kmed)
     if is_evolution:
-        d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val")
-        dur1 = st.sidebar.number_input("Durée Palier 1 (jours)", min_value=1, value=default_dur1, key="side_dur1_val")
-        d2 = st.sidebar.number_input("Dose Palier 2 (cachets final)", min_value=1, value=default_d2, key="side_d2_val")
+        d1 = st.sidebar.number_input("Dose Palier 1 (cachets/repas)", min_value=1, value=default_nb_cachet, key="side_d1_val_" + _kmed)
+        dur1 = st.sidebar.number_input("Durée Palier 1 (jours)", min_value=1, value=default_dur1, key="side_dur1_val_" + _kmed)
+        d2 = st.sidebar.number_input("Dose Palier 2 (cachets final)", min_value=1, value=default_d2, key="side_d2_val_" + _kmed)
         phases_save = [{"dose": int(d1), "duration": int(dur1)}, {"dose": int(d2), "duration": 9999}]
         nb_cachets_repas = int(d1)
     else:
-        nb_cachets_repas = st.sidebar.number_input("Nombre de cachet(s) par repas :", min_value=1, value=default_nb_cachet, key="side_nb_cachets_repas")
+        nb_cachets_repas = st.sidebar.number_input("Nombre de cachet(s) par repas :", min_value=1, value=default_nb_cachet, key="side_nb_cachets_repas_" + _kmed)
         phases_save = [{"dose": int(nb_cachets_repas), "duration": 9999}]
 
     if st.sidebar.button("💾 Enregistrer le médicament", key="side_save_med_btn"):
-        if med_name:
+        if not med_name:
+            st.sidebar.error("Écris d'abord le nom du médicament.")
+        else:
             config_med = {
                 "stock": int(stock_actuel), "timing": timing, "heure_precise": heure_precise, "start_date": str(date_debut_traitement), "is_evolution": is_evolution, "phases": phases_save,                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "prend_coucher": p_coucher, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
