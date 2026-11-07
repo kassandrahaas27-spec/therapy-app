@@ -4,16 +4,16 @@ from datetime import datetime, date, timedelta
 import json
 from supabase import create_client, Client
 
-st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="centered")
+st.set_page_config(page_title="Mon Therapy Suivi Global", page_icon="🤰", layout="wide")
 
 st.markdown("""
 <style>
-/* Menu : les onglets passent à la ligne au lieu de défiler avec une flèche */
-div[data-baseweb="tab-list"]{flex-wrap:wrap !important; gap:2px 6px; overflow:visible !important;}
-div[data-baseweb="tab-list"] button[data-baseweb="tab"]{padding:6px 10px; height:auto;}
-div[data-baseweb="tab-list"] ~ div[data-testid="stTabScrollButton"], button[data-testid="stTabScrollButton"]{display:none !important;}
-div[data-baseweb="tab-highlight"]{display:none !important;}
-div[data-baseweb="tab-border"]{display:none !important;}
+/* Page : large mais lisible */
+.block-container{max-width:1250px; padding-top:2rem; padding-left:2rem; padding-right:2rem;}
+@media (max-width:640px){.block-container{padding-left:0.8rem; padding-right:0.8rem;}}
+/* Menu principal : boutons sur plusieurs lignes, jamais coupés */
+div[data-testid="stRadio"] div[role="radiogroup"]{flex-wrap:wrap; gap:8px 10px;}
+div[data-testid="stRadio"] div[role="radiogroup"] > label{background:#f0f2f6; border-radius:999px; padding:6px 14px; margin:0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -488,7 +488,10 @@ if meds:
             redemarrer()
 
 # --- ONGLETS PRINCIPAUX ---
-tab1, tab2, tab3, tab4, tab6, tab8, tab7, tab5 = st.tabs(["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧠 TDAH · TSA · SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"])
+_NOMS_MENU = ["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧠 TDAH · TSA · SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"]
+choix_menu = st.radio("Menu", _NOMS_MENU, horizontal=True, label_visibility="collapsed", key="menu_principal")
+_holders_menu = [st.empty() for _ in _NOMS_MENU]
+tab1, tab2, tab3, tab4, tab6, tab8, tab7, tab5 = [h.container() for h in _holders_menu]
 
 # --- TAB 1 : TABLEAU DE BORD ---
 with tab1:
@@ -2427,3 +2430,8 @@ with tab7:
     with dl2:
         st.markdown(lien_telechargement(corps_txt, "fiche_medecins_" + str(date.today()) + ".txt", "text/plain", "⬇️ Version texte"), unsafe_allow_html=True)
     st.caption("Ces informations viennent de ce que tu as noté dans l'appli. Elles ne remplacent pas un dossier médical.")
+
+# --- Affiche uniquement l'onglet choisi dans le menu ---
+for _h, _n in zip(_holders_menu, _NOMS_MENU):
+    if _n != choix_menu:
+        _h.empty()
