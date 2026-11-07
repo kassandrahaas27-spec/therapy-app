@@ -450,6 +450,17 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     med_name = st.sidebar.text_input("Nom du médicament (ex: Metformine)", value=current_med_name if med_mode == "Modifier un existant" else "", key="side_med_name").strip()
     stock_actuel = st.sidebar.number_input("Stock de comprimés", min_value=0, value=default_stock, key="side_med_stock")
     timing = st.sidebar.selectbox("Moment lié au repas", ["Début de repas", "Milieu de repas", "Fin de repas"], index=0, key="side_med_timing")
+    _hp_defaut = ""
+    if med_mode == "Modifier un existant" and meds and current_med_name:
+        _hp_defaut = str(meds[current_med_name].get("heure_precise", "") or "")
+    a_heure = st.sidebar.checkbox("⏰ À prendre à une heure précise", value=bool(_hp_defaut), key="side_med_heure_cb")
+    heure_precise = ""
+    if a_heure:
+        try:
+            _h0 = datetime.strptime(_hp_defaut, "%H:%M").time() if _hp_defaut else datetime.strptime("08:00", "%H:%M").time()
+        except ValueError:
+            _h0 = datetime.strptime("08:00", "%H:%M").time()
+        heure_precise = st.sidebar.time_input("Heure de prise", value=_h0, key="side_med_heure").strftime("%H:%M")
     
     st.sidebar.markdown("**Moments de prise :**")
     p_matin = st.sidebar.checkbox("🌅 Matin", value=default_m, key="side_p_matin")
@@ -473,7 +484,7 @@ with st.sidebar.expander("✏️ Ajouter ou Modifier un Médicament", expanded=T
     if st.sidebar.button("💾 Enregistrer le médicament", key="side_save_med_btn"):
         if med_name:
             config_med = {
-                "stock": int(stock_actuel), "timing": timing, "start_date": str(date_debut_traitement), "is_evolution": is_evolution, "phases": phases_save,                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "prend_coucher": p_coucher, "nb_cachet_par_repas": int(nb_cachets_repas)
+                "stock": int(stock_actuel), "timing": timing, "heure_precise": heure_precise, "start_date": str(date_debut_traitement), "is_evolution": is_evolution, "phases": phases_save,                "prend_matin": p_matin, "prend_midi": p_midi, "prend_soir": p_soir, "prend_coucher": p_coucher, "nb_cachet_par_repas": int(nb_cachets_repas)
             }
             try:
                 supabase.table("medicaments").upsert({"name": med_name, "config": config_med}).execute()
@@ -490,7 +501,7 @@ if meds:
             redemarrer()
 
 # --- ONGLETS PRINCIPAUX ---
-_NOMS_MENU = ["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧠 TDAH · TSA · SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"]
+_NOMS_MENU = ["📱 Tableau de Bord", "🌸 Mon Suivi Féminin", "📅 Rendez-vous Médicaux", "🥗 Suivi Glycémie & Nutrition", "🧘 Douleur & Énergie", "🧩 TSA", "⚡ TDAH", "🌿 SPT", "📄 Fiche pour mes médecins", "📜 Historique & Corrections"]
 choix_menu = st.radio("Menu", _NOMS_MENU, horizontal=True, label_visibility="collapsed", key="menu_principal")
 
 # --- TAB 1 : TABLEAU DE BORD ---
@@ -554,6 +565,27 @@ if choix_menu == _NOMS_MENU[0]:
             autres_taches.append("📞 " + str(nb_appeler) + " rendez-vous à prendre (onglet Rendez-vous Médicaux)")
     for tache in autres_taches:
         zone_liste.write(tache)
+
+    from zoneinfo import ZoneInfo
+    _maintenant = datetime.now(ZoneInfo("Europe/Paris"))
+    if date_saisie == _maintenant.date():
+        for nom_m, manque in manquants.items():
+            hp = str(meds[nom_m].get("heure_precise", "") or "")
+            if not hp:
+                continue
+            try:
+                h_p, mi_p = [int(x) for x in hp.split(":")]
+            except ValueError:
+                continue
+            cible = _maintenant.replace(hour=h_p, minute=mi_p, second=0, microsecond=0)
+            ecart = int((cible - _maintenant).total_seconds() // 60)
+            with zone_focus:
+                if ecart > 60:
+                    st.info("⏰ **" + nom_m + "** : à prendre à **" + hp + "** (dans " + str(ecart // 60) + " h " + str(ecart % 60).zfill(2) + ")")
+                elif ecart >= 0:
+                    st.warning("⏰ **" + nom_m + "** : à prendre à **" + hp + "** (dans " + str(ecart) + " min)")
+                else:
+                    st.error("⏰ **" + nom_m + "** : l'heure de **" + hp + "** est passée depuis " + (str(-ecart // 60) + " h " + str((-ecart) % 60).zfill(2) if -ecart >= 60 else str(-ecart) + " min") + ". Si tu l'as pris, enregistre-le ci-dessous.")
 
     if neuro_mode:
         with zone_focus:
@@ -1628,12 +1660,12 @@ if choix_menu == _NOMS_MENU[3]:
 
             import altair as alt
             p_df["Date_dt"] = pd.to_datetime(p_df["Date"])
-            p_df["Moyenne 7 jours"] = p_df.set_index("Date_dt")["Poids (kg)"].rolling("7D").mean().round(2).values
+            p_df["Moyenne 4 semaines"] = p_df.set_index("Date_dt")["Poids (kg)"].rolling("28D").mean().round(2).values
 
             # --- Alerte si prise de poids rapide ---
             date_derniere = p_df["Date_dt"].iloc[-1]
             alertes_poids = []
-            for jours_fen, seuil_fen in [(7, 1.5), (14, 2.0)]:
+            for jours_fen, seuil_fen in [(14, 2.0), (28, 3.0)]:
                 ancien = p_df[p_df["Date_dt"] <= date_derniere - timedelta(days=jours_fen)]
                 if not ancien.empty:
                     diff_fen = poids_actuel - float(ancien["Poids (kg)"].iloc[-1])
@@ -1648,14 +1680,14 @@ if choix_menu == _NOMS_MENU[3]:
             base_p = alt.Chart(p_df)
             ligne_p = base_p.mark_line(point=True, color="#e377c2").encode(
                 x=alt.X("Date_dt:T", title="Date"), y=alt.Y("Poids (kg):Q", scale=alt.Scale(zero=False)),
-                tooltip=["Date", "Poids (kg)", "Moyenne 7 jours"]
+                tooltip=["Date", "Poids (kg)", "Moyenne 4 semaines"]
             )
             ligne_moy = base_p.mark_line(color="#444444", strokeDash=[5, 3]).encode(
-                x=alt.X("Date_dt:T"), y=alt.Y("Moyenne 7 jours:Q", scale=alt.Scale(zero=False))
+                x=alt.X("Date_dt:T"), y=alt.Y("Moyenne 4 semaines:Q", scale=alt.Scale(zero=False))
             )
             graphique_poids = (ligne_p + ligne_moy).properties(width=450, height=220)
             st.altair_chart(graphique_poids, use_container_width=False)
-            st.caption("Ligne rose = poids de chaque pesée. Ligne pointillée = moyenne sur 7 jours : c'est elle qui compte, le poids du jour bouge avec l'eau, le sel et le cycle.")
+            st.caption("Ligne rose = poids de chaque pesée. Ligne pointillée = moyenne de tes pesées des 4 dernières semaines (tu te pèses environ 1 fois par semaine) : c'est elle qui compte, le poids du jour bouge avec l'eau, le sel et le cycle.")
 
             st.write("**📅 Historique de mes pesées**")
             h_df = p_df.copy()
@@ -1705,34 +1737,49 @@ if choix_menu == _NOMS_MENU[3]:
                 trouves = analyser_texte_bilan(texte_pdf)
                 date_pdf = date_dans_texte_bilan(texte_pdf) or date.today()
                 date_imp = st.date_input("🗓️ Date de la prise de sang (vérifie-la)", value=min(date_pdf, date.today()), max_value=date.today(), key="t4_pdf_date")
-                if not trouves:
-                    st.info("Je n'ai reconnu aucune analyse connue dans ce PDF. Tu peux voir le texte lu ci-dessous et saisir les valeurs à la main.")
+                st.write("**1. Le texte de ton PDF** (lis-le et complète les lignes ci-dessous comme tu veux) :")
+                st.text_area("Texte lu", value=texte_pdf[:8000], height=260, key="t4_pdf_texte_" + pdf_b.name, label_visibility="collapsed")
+                if trouves:
+                    st.caption("J'ai pré-rempli ce que j'ai reconnu. Je ne devine pas le reste : tout est modifiable, et tu peux décocher, corriger ou compléter.")
                 else:
-                    st.write("**Voici ce que j'ai trouvé. Décoche ce qui est faux, puis enregistre :**")
-                    choisis = []
-                    for i_t, r_t in enumerate(trouves):
-                        ref_aff = (" (norme labo : " + r_t["Norme du labo"] + ")") if r_t["Norme du labo"] else ""
-                        etiquette = r_t["Examen"] + " : " + str(r_t["Valeur"]) + " " + r_t["Unité"] + ref_aff + " : " + r_t["Statut"]
-                        if st.checkbox(etiquette, value=True, key="t4_pdf_ck_" + str(i_t) + "_" + pdf_b.name):
-                            choisis.append(r_t)
-                    for r_t in trouves:
-                        if r_t["Examen"] == "HbA1c" and 5.7 <= r_t["Valeur"] <= 6.4:
-                            st.info("ℹ️ Repère : une HbA1c entre 5,7 et 6,4 % correspond à la zone de pré-diabète. À discuter avec ton médecin.")
-                        if r_t["Examen"].startswith("Glycémie") and r_t["Unité"].lower() == "g/l" and 1.0 <= r_t["Valeur"] < 1.26:
-                            st.info("ℹ️ Repère : une glycémie à jeun entre 1,00 et 1,25 g/L correspond à la zone de pré-diabète. À discuter avec ton médecin.")
-                    st.caption("Ce tri est automatique et peut se tromper : vérifie toujours avec ton PDF. Ce n'est pas un diagnostic, c'est à interpréter avec ton médecin.")
-                    if st.button("💾 Enregistrer les résultats cochés", key="t4_pdf_save") and choisis:
+                    st.caption("Je n'ai rien reconnu avec certitude, donc je ne devine rien : remplis les lignes à partir du texte ci-dessus.")
+                st.write("**2. Les résultats à enregistrer :**")
+                nb_vides = 4
+                lignes_edit = list(trouves) + [{"Examen": "", "Valeur": "", "Unité": "", "Norme du labo": "", "Statut": ""} for _ in range(nb_vides)]
+                lignes_ok = []
+                for i_t, r_t in enumerate(lignes_edit):
+                    k_t = "t4_pdf_" + str(i_t) + "_" + pdf_b.name
+                    c0, c1, c2, c3 = st.columns([0.6, 3, 1.6, 1.6])
+                    with c0:
+                        garde = st.checkbox("✔", value=bool(r_t["Examen"]), key=k_t + "_ck")
+                    with c1:
+                        nom_e = st.text_input("Examen", value=r_t["Examen"], key=k_t + "_nom", label_visibility="collapsed", placeholder="Nom de l'examen")
+                    with c2:
+                        val_e = st.text_input("Valeur", value=str(r_t["Valeur"]).replace(".", ",") if r_t["Valeur"] != "" else "", key=k_t + "_val", label_visibility="collapsed", placeholder="Valeur")
+                    with c3:
+                        uni_e = st.text_input("Unité", value=r_t["Unité"], key=k_t + "_uni", label_visibility="collapsed", placeholder="Unité")
+                    if garde and nom_e.strip() and val_e.strip():
+                        lignes_ok.append((nom_e.strip(), val_e.strip(), uni_e.strip(), r_t.get("Norme du labo", "")))
+                st.caption("Ce n'est pas un diagnostic : c'est à interpréter avec ton médecin.")
+                if st.button("💾 Enregistrer les lignes cochées", key="t4_pdf_save"):
+                    if not lignes_ok:
+                        st.warning("Aucune ligne complète (examen + valeur) n'est cochée.")
+                    else:
                         tous_ok = True
-                        for r_t in choisis:
-                            note_pdf = "Import PDF" + ((" | norme labo " + r_t["Norme du labo"]) if r_t["Norme du labo"] else "")
-                            if not save_row_to_supabase("resultats_bilans", {"Date": str(date_imp), "Examen": r_t["Examen"], "Valeur": r_t["Valeur"], "Unité": r_t["Unité"], "Note": note_pdf}):
+                        for nom_e, val_e, uni_e, ref_e in lignes_ok:
+                            try:
+                                val_num = float(val_e.replace(",", ".").replace(" ", ""))
+                            except ValueError:
+                                st.error("La valeur « " + val_e + " » de « " + nom_e + " » n'est pas un nombre.")
+                                tous_ok = False
+                                break
+                            note_pdf = "Import PDF" + ((" | norme labo " + ref_e) if ref_e else "")
+                            if not save_row_to_supabase("resultats_bilans", {"Date": str(date_imp), "Examen": nom_e, "Valeur": val_num, "Unité": uni_e, "Note": note_pdf}):
                                 tous_ok = False
                                 break
                         if tous_ok:
-                            st.success("🎉 " + str(len(choisis)) + " résultat(s) enregistré(s) !")
+                            st.success("🎉 " + str(len(lignes_ok)) + " résultat(s) enregistré(s) !")
                             redemarrer()
-                with st.expander("Voir le texte lu dans le PDF"):
-                    st.text(texte_pdf[:6000])
     st.write("**Ou saisir à la main :**")
     bb1, bb2 = st.columns(2)
     with bb1:
@@ -1930,7 +1977,7 @@ if choix_menu == _NOMS_MENU[3]:
         st.dataframe(bilan.iloc[::-1].reset_index(drop=True), use_container_width=True)
         st.caption("Regarde si les semaines où le poids monte sont celles où le traitement ou les conseils ont baissé. Ce tableau sert à comprendre, pas à te juger.")
 # --- TAB 5 : HISTORIQUE DIRECT ---
-if choix_menu == _NOMS_MENU[7]:
+if choix_menu == _NOMS_MENU[9]:
     st.subheader("📜 Historique Général Cloud")
     st.write("**Mon journal de bord des prises du jour :**")
     if not history_df.empty:
@@ -2071,47 +2118,48 @@ if choix_menu == _NOMS_MENU[4]:
     else:
         st.caption("Aucun enregistrement pour le moment.")
 
-# --- TAB 8 : TDAH · TSA · SPT ---
-if choix_menu == _NOMS_MENU[5]:
-    import streamlit.components.v1 as components_n
-    st.subheader("🧠 TDAH · TSA · SPT : mes outils")
-    st.caption("Des repères pratiques, pas un diagnostic ni un traitement : ils ne remplacent pas ton équipe de soin. En détresse ou en danger : 3114 (prévention du suicide, 24h/24) ou 15 / 112.")
+# --- TSA / TDAH / SPT : trois sections distinctes ---
+import streamlit.components.v1 as components_n
 
-    plan = charger_config(6)
+_TROUBLES = {
+    "TSA": {
+        "titre": "🧩 TSA : trouble du spectre de l'autisme", "cfg": 6, "score_col": "Surcharge sensorielle (0-10)",
+        "scores": [("🔊 Surcharge sensorielle", "Surcharge sensorielle (0-10)", 3)],
+        "evenements": ["Meltdown (crise)", "Shutdown (je me suis éteinte)", "Difficulté à parler / mutisme", "Épuisement social (masking)", "Besoin d'isolement", "Changement de programme mal vécu", "Stimming important", "Aucun événement"],
+        "declencheurs": ["Bruit", "Lumière", "Foule", "Changement de programme", "Imprévu", "Contact physique", "Odeur / texture", "Contexte médical", "Échange social", "Manque de sommeil", "Faim", "Douleur", "Je ne sais pas"],
+        "champs": [("signes", "⚠️ Mes signes de surcharge (comment je sais que ça monte)", "Ex : je me crispe, je n'entends plus bien, j'ai chaud, je fuis les regards..."),
+                   ("declencheurs", "🎯 Mes déclencheurs sensoriels et sociaux", "Ex : bruits soudains, néons, changements de plan, foule, certaines textures..."),
+                   ("aide", "💛 Ce qui m'apaise", "Ex : casque anti-bruit, pièce sombre, couverture lestée, objet à tenir, musique..."),
+                   ("eviter", "🚫 Ce qui m'aggrave", "Ex : qu'on me touche sans prévenir, qu'on me presse, les questions pendant une crise..."),
+                   ("soignants", "🩺 Ce que mes soignants peuvent faire", "Ex : expliquer chaque geste, me donner les consignes par écrit, me laisser du temps pour répondre.")],
+    },
+    "TDAH": {
+        "titre": "⚡ TDAH : trouble de l'attention avec ou sans hyperactivité", "cfg": 9, "score_col": "Concentration (0-10)",
+        "scores": [("🎯 Concentration (10 = facile)", "Concentration (0-10)", 5), ("🌀 Agitation / impulsivité", "Agitation / impulsivité (0-10)", 3)],
+        "evenements": ["Hyperfocus (j'ai oublié de manger ou boire)", "Oublis ou retards", "Blocage / procrastination", "Impulsivité (achat, parole, décision)", "Difficulté à finir ce que je commence", "Médicament oublié", "Fatigue mentale forte", "Aucun événement"],
+        "declencheurs": ["Trop de tâches à la fois", "Distractions / bruit", "Manque de sommeil", "Faim", "Ennui", "Stress", "Écrans", "Changement de routine", "Je ne sais pas"],
+        "champs": [("signes", "⚠️ Mes signes de dispersion ou de débordement", "Ex : j'ouvre dix onglets, je tourne en rond, je perds mes affaires, je m'énerve vite..."),
+                   ("declencheurs", "🎯 Ce qui me fait décrocher", "Ex : notifications, bruit, tâche trop floue, trop de choses à décider..."),
+                   ("aide", "💛 Ce qui m'aide à démarrer et à tenir", "Ex : minuteur, musique, faire à deux, listes courtes, rituel de départ..."),
+                   ("eviter", "🚫 Ce qui m'aggrave", "Ex : les longues listes, les consignes orales rapides, les interruptions..."),
+                   ("soignants", "🩺 Ce que mes soignants peuvent faire", "Ex : consignes courtes et écrites, rappels de rendez-vous, un seul sujet à la fois.")],
+    },
+    "SPT": {
+        "titre": "🌿 SPT : stress post-traumatique", "cfg": 10, "score_col": "Anxiété / hypervigilance (0-10)",
+        "scores": [("⚡ Anxiété / hypervigilance", "Anxiété / hypervigilance (0-10)", 3)],
+        "evenements": ["Flashback", "Cauchemar", "Crise de panique", "Dissociation (déconnectée)", "Sursauts / hypervigilance", "Évitement", "Engourdissement émotionnel", "Aucun événement"],
+        "declencheurs": ["Bruit soudain", "Odeur", "Contexte médical / examen", "Contact physique", "Lieu précis", "Date ou anniversaire", "Conflit", "Être seule", "Manque de sommeil", "Je ne sais pas"],
+        "champs": [("signes", "⚠️ Mes signes d'alerte (comment je sais que ça monte)", "Ex : cœur qui s'accélère, souffle court, je me fige, je me sens loin de mon corps..."),
+                   ("declencheurs", "🎯 Mes déclencheurs connus", "Ex : certains bruits, odeurs, lieux, situations médicales..."),
+                   ("aide", "💛 Ce qui m'aide à revenir au présent", "Ex : respirer lentement, nommer ce que je vois, appeler quelqu'un, sentir mes pieds au sol..."),
+                   ("eviter", "🚫 Ce qui m'aggrave", "Ex : être surprise, se sentir bloquée, qu'on me touche sans prévenir..."),
+                   ("lieu_sur", "🏡 Mon lieu sûr (réel ou imaginé)", "Ex : mon salon, mon lit, un endroit au bord de l'eau..."),
+                   ("soignants", "🩺 Ce que mes soignants peuvent faire", "Ex : tout m'expliquer avant, me laisser dire stop, un examen au rythme que je choisis.")],
+    },
+}
 
-    # ---------- 1. LÀ, MAINTENANT ----------
-    st.write("### 🆘 Là, maintenant")
-    situation = st.radio("Ce que je vis :", ["🔊 Surcharge / crise (TSA)", "⚡ Flashback, panique, corps en alerte (SPT)", "🌀 Je n'arrive pas à démarrer ou je suis débordée (TDAH)"], key="t8_situation")
-    if plan.get("aide", "").strip():
-        st.success("💛 **Ce qui m'aide d'habitude (mon plan) :** " + " / ".join(x.strip() for x in plan["aide"].splitlines() if x.strip()))
-    if plan.get("phrase", "").strip():
-        st.info("🗨️ **Ma phrase d'ancrage :** " + plan["phrase"].strip())
 
-    if situation.startswith("🔊"):
-        st.markdown("""
-1. **Réduire l'entrée :** m'éloigner du bruit, de la lumière, des gens. Baisser la luminosité, mettre casque ou bouchons, lunettes teintées.
-2. **Ne rien demander de plus :** pas de décision, pas de conversation. Utiliser une phrase toute prête (voir plus bas) ou un message.
-3. **Mon corps d'abord :** stimming autorisé (balancement, mains, objet à tenir), couverture lestée ou pression douce, position confortable.
-4. **Attendre sans me juger :** la crise ou le shutdown passe. Boire un peu d'eau, grignoter si possible.
-5. **Après :** noter ce qui l'a déclenchée dans le check-in (sans me blâmer), et me reposer plus que d'habitude.
-""")
-    elif situation.startswith("⚡"):
-        st.markdown("""
-1. **Me dire la vérité du moment :** « Je suis en sécurité maintenant. Nous sommes le **""" + date.today().strftime("%d/%m/%Y") + """**. Ce que je ressens est un souvenir, ça va passer. »
-2. **Respirer plus lentement :** inspirer 4 secondes, expirer 6 secondes (outil ci-dessous), 5 à 10 fois.
-3. **Ancrage 5-4-3-2-1 :** nommer à voix haute ou dans ma tête **5** choses que je vois, **4** que je peux toucher, **3** que j'entends, **2** que je sens, **1** que je goûte.
-4. **Remettre du présent :** sentir mes pieds sur le sol, le dos contre le dossier, regarder les murs et les coins de la pièce.
-5. **Appeler quelqu'un de confiance** si ça ne descend pas. Si je pense à me faire du mal : 3114 ou 15 / 112.
-""")
-    else:
-        st.markdown("""
-1. **Une seule petite action :** la plus petite possible (ouvrir le document, poser le linge sur le lit, remplir un verre d'eau).
-2. **Règle des 2 minutes :** je commence juste 2 minutes. Si je veux m'arrêter après, c'est permis.
-3. **Minuteur :** 5 à 10 minutes (minuteur de l'onglet Tableau de Bord en mode TDAH / TSA), puis pause.
-4. **Sortir de ma tête :** tout ce qui tourne va dans le « vide-tête » plus bas. Je n'ai pas à tout retenir.
-5. **Récompense simple :** après la tâche, quelque chose de petit et agréable (musique, boisson, étirement).
-""")
-
+def _bloc_respiration(cle):
     with st.expander("🌬️ Respiration guidée (4 s inspire, 6 s expire)"):
         components_n.html("""
 <div style='font-family:sans-serif;text-align:center'>
@@ -2132,136 +2180,215 @@ function stop(){ run=false; clearTimeout(to); document.getElementById('l').textC
 </script>
 """, height=260)
 
+
+def _bloc_minuteur(cle):
+    with st.expander("⏱️ Minuteur de focus / pause"):
+        components_n.html("""
+<div style='font-family:sans-serif;text-align:center'>
+  <div id='t' style='font-size:42px;margin:8px 0'>10:00</div>
+  <button onclick='go(5)'>5 min</button> <button onclick='go(10)'>10 min</button>
+  <button onclick='go(25)'>25 min</button> <button onclick='stop()'>Arrêter</button>
+  <div id='m' style='margin-top:8px;color:#555'></div>
+</div>
+<script>
+var iv=null,left=0;
+function show(){var m=Math.floor(left/60),s=left%60;document.getElementById('t').textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
+function go(min){stop();left=min*60;show();document.getElementById('m').textContent='C est parti, une seule chose.';
+iv=setInterval(function(){left--;show();if(left<=0){stop();document.getElementById('m').textContent='Terminé. Respire, bois un verre d eau.';}},1000);}
+function stop(){if(iv){clearInterval(iv);iv=null;}}
+</script>
+""", height=190)
+
+
+def _bloc_phrases(phrases):
     with st.expander("🗣️ Phrases toutes prêtes (à montrer quand parler est dur)"):
-        for ph in [
-            "Je suis en surcharge. J'ai besoin de silence et de calme pendant un moment.",
-            "Je ne peux pas parler maintenant. Je te réponds par message plus tard.",
-            "Peux-tu me l'écrire ou me le répéter plus lentement, une chose à la fois ?",
-            "Prévenez-moi avant de me toucher et expliquez-moi ce que vous allez faire.",
-            "J'ai besoin d'une pause. On peut reprendre dans 10 minutes ?",
-            "Ce n'est pas contre toi. Mon corps est en alerte, j'ai besoin d'un peu de temps.",
-        ]:
+        for ph in phrases:
             st.markdown("> **" + ph + "**")
 
-    st.write("---")
 
-    # ---------- 2. MON PLAN PERSONNEL ----------
+def _bloc_plan(code, plan):
+    conf = _TROUBLES[code]
     st.write("### 📝 Mon plan personnel")
-    st.caption("À remplir une fois, quand ça va mieux. Il s'affichera au moment où tu en as besoin et peut figurer sur la fiche pour tes médecins.")
+    st.caption("À remplir une fois, quand ça va mieux. Il s'affiche au moment où tu en as besoin et résume l'essentiel sur la fiche pour tes médecins.")
     with st.expander("Voir / modifier mon plan", expanded=not bool(plan)):
-        p_signes = st.text_area("⚠️ Mes signes d'alerte (comment je sais que ça monte)", value=plan.get("signes", ""), key="t8_signes", placeholder="Ex : je me crispe, je n'entends plus bien, j'ai chaud, je fuis les regards...")
-        p_decl = st.text_area("🎯 Mes déclencheurs connus", value=plan.get("declencheurs", ""), key="t8_decl", placeholder="Ex : bruit soudain, changement de programme, foule, odeur, certaines situations médicales...")
-        p_aide = st.text_area("💛 Ce qui m'aide", value=plan.get("aide", ""), key="t8_aide", placeholder="Ex : casque, pièce sombre, couverture lestée, musique, appeler une personne...")
-        p_eviter = st.text_area("🚫 Ce qui m'aggrave (à éviter)", value=plan.get("eviter", ""), key="t8_eviter", placeholder="Ex : qu'on me touche sans prévenir, qu'on me presse, qu'on parle fort...")
-        p_phrase = st.text_input("🗨️ Ma phrase d'ancrage", value=plan.get("phrase", ""), key="t8_phrase", placeholder="Ex : Je suis en sécurité, je suis chez moi, ça va passer.")
-        p_soignants = st.text_area("🩺 Ce que mes soignants peuvent faire pour moi", value=plan.get("soignants", ""), key="t8_soignants", placeholder="Ex : expliquer chaque geste, me laisser dire stop, me donner les consignes par écrit, éviter les contacts surprises.")
-        p_contact = st.text_input("📞 Qui appeler", value=plan.get("contact", ""), key="t8_contact", placeholder="Nom et numéro")
-        if st.button("💾 Enregistrer mon plan", key="t8_save_plan"):
-            if sauver_config(6, {"signes": p_signes, "declencheurs": p_decl, "aide": p_aide, "eviter": p_eviter, "phrase": p_phrase, "soignants": p_soignants, "contact": p_contact}):
+        valeurs = {}
+        for cle, lib, exemple in conf["champs"]:
+            valeurs[cle] = st.text_area(lib, value=plan.get(cle, ""), key="n_" + code + "_" + cle, placeholder=exemple)
+        valeurs["phrase"] = st.text_input("🗨️ Ma phrase pour me recentrer", value=plan.get("phrase", ""), key="n_" + code + "_phrase")
+        valeurs["contact"] = st.text_input("📞 Qui appeler", value=plan.get("contact", ""), key="n_" + code + "_contact", placeholder="Nom et numéro")
+        if st.button("💾 Enregistrer mon plan", key="n_" + code + "_save_plan"):
+            if sauver_config(conf["cfg"], valeurs):
                 st.success("🎉 Plan enregistré !")
                 redemarrer()
 
-    st.write("---")
 
-    # ---------- 3. ROUTINE ----------
+def _bloc_checkin(code):
+    conf = _TROUBLES[code]
+    st.write("### 📊 Check-in du jour")
+    st.caption("30 secondes. Sert à repérer ce qui déclenche et ce qui aide, pour en parler à tes médecins avec des faits.")
+    n_date = st.date_input("🗓️ Jour", value=date.today(), max_value=date.today(), key="n_" + code + "_date")
+    valeurs_scores = {}
+    for lib, col, defaut in conf["scores"]:
+        valeurs_scores[col] = st.slider(lib, 0, 10, defaut, key="n_" + code + "_" + col)
+    n_events = st.multiselect("Ce qui s'est passé", conf["evenements"], key="n_" + code + "_events")
+    n_decl = st.multiselect("Déclencheurs", conf["declencheurs"], key="n_" + code + "_decl")
+    n_aide = st.text_input("Ce qui m'a aidée", key="n_" + code + "_aide")
+    n_note = st.text_input("Note libre", key="n_" + code + "_note")
+    if st.button("💾 Enregistrer mon check-in", key="n_" + code + "_save"):
+        ligne = {"Date": str(n_date), "Surcharge sensorielle (0-10)": None, "Anxiété / hypervigilance (0-10)": None, "Concentration (0-10)": None, "Agitation / impulsivité (0-10)": None,
+                 "Événements": ", ".join(n_events) if n_events else "Aucun", "Déclencheurs": ", ".join(n_decl) if n_decl else "",
+                 "Ce qui a aidé": n_aide, "Note": ("[" + code + "] " + n_note).strip()}
+        for col, v in valeurs_scores.items():
+            ligne[col] = int(v)
+        if save_row_to_supabase("suivi_neuro", ligne):
+            st.success("🎉 Check-in enregistré !")
+            redemarrer()
+        else:
+            st.warning("Si l'erreur parle d'une table introuvable ou d'une sécurité, lance les scripts SQL fournis (création de la table suivi_neuro et sécurité des tables).")
+    if not neuro_df.empty and "Date" in neuro_df.columns and conf["score_col"] in neuro_df.columns:
+        nd = neuro_df.copy()
+        nd = nd[pd.to_numeric(nd[conf["score_col"]], errors="coerce").notna()].sort_values(by="Date", ascending=False)
+        if not nd.empty:
+            cols_aff = ["Date"] + [c for _, c, _ in conf["scores"]] + [c for c in ["Événements", "Déclencheurs", "Ce qui a aidé", "Note"] if c in nd.columns]
+            st.write("**Mes derniers check-ins :**")
+            st.dataframe(nd.head(14)[cols_aff], use_container_width=True)
+            if len(nd) >= 2:
+                gr = nd.head(30).sort_values(by="Date").set_index("Date")[[c for _, c, _ in conf["scores"]]].apply(pd.to_numeric, errors="coerce")
+                st.line_chart(gr)
+            compte = {}
+            for ligne_d in nd.head(30)["Déclencheurs"].fillna("").tolist():
+                for d_item in [x.strip() for x in str(ligne_d).split(",") if x.strip()]:
+                    compte[d_item] = compte.get(d_item, 0) + 1
+            if compte:
+                top = sorted(compte.items(), key=lambda kv: kv[1], reverse=True)[:3]
+                st.info("🔎 Déclencheurs les plus fréquents : " + ", ".join(k + " (" + str(v) + ")" for k, v in top))
+            return
+    st.caption("Aucun check-in enregistré pour le moment.")
+
+
+def _bloc_routine():
     st.write("### 🗓️ Ma routine prévisible")
-    st.caption("Des repères fixes aident le TSA et le TDAH. Une étape par ligne. Les cases se remettent à zéro chaque jour.")
+    st.caption("Des repères fixes apaisent. Une étape par ligne. Les cases se remettent à zéro chaque jour.")
     rout = charger_config(7)
     with st.expander("✏️ Écrire / modifier ma routine"):
-        r_matin = st.text_area("🌅 Matin", value=rout.get("matin", ""), key="t8_r_matin", placeholder="Boire un verre d'eau\nPrendre mes médicaments\nPetit-déjeuner")
-        r_jour = st.text_area("☀️ Journée", value=rout.get("jour", ""), key="t8_r_jour")
-        r_soir = st.text_area("🌙 Soir", value=rout.get("soir", ""), key="t8_r_soir", placeholder="Préparer les affaires de demain\nLumière douce\nMédicaments du soir")
-        if st.button("💾 Enregistrer ma routine", key="t8_save_rout"):
+        r_matin = st.text_area("🌅 Matin", value=rout.get("matin", ""), key="n_r_matin", placeholder="Boire un verre d'eau\nPrendre mes médicaments\nPetit-déjeuner")
+        r_jour = st.text_area("☀️ Journée", value=rout.get("jour", ""), key="n_r_jour")
+        r_soir = st.text_area("🌙 Soir", value=rout.get("soir", ""), key="n_r_soir", placeholder="Préparer les affaires de demain\nLumière douce")
+        if st.button("💾 Enregistrer ma routine", key="n_r_save"):
             if sauver_config(7, {"matin": r_matin, "jour": r_jour, "soir": r_soir}):
                 redemarrer()
-    nb_total_r, nb_fait_r = 0, 0
+    total, fait = 0, 0
     for titre_r, cle_r in [("🌅 Matin", "matin"), ("☀️ Journée", "jour"), ("🌙 Soir", "soir")]:
         etapes = [x.strip() for x in str(rout.get(cle_r, "")).splitlines() if x.strip()]
         if etapes:
             st.write("**" + titre_r + "**")
             for i_r, e_r in enumerate(etapes):
-                nb_total_r += 1
-                if st.checkbox(e_r, key="t8_rt_" + cle_r + "_" + str(i_r) + "_" + str(date.today())):
-                    nb_fait_r += 1
-    if nb_total_r:
-        st.progress(nb_fait_r / nb_total_r, text=str(nb_fait_r) + " étape(s) sur " + str(nb_total_r))
+                total += 1
+                if st.checkbox(e_r, key="n_rt_" + cle_r + "_" + str(i_r) + "_" + str(date.today())):
+                    fait += 1
+    if total:
+        st.progress(fait / total, text=str(fait) + " étape(s) sur " + str(total))
     else:
         st.caption("Ta routine est vide pour l'instant.")
 
-    st.write("---")
 
-    # ---------- 4. VIDE-TÊTE ----------
+def _bloc_videtete():
     st.write("### 🧺 Vide-tête")
-    st.caption("Note vite ce qui tourne dans ta tête (une idée, une tâche, un souci). Tu le traiteras plus tard, tu n'as pas à le garder en mémoire.")
-    vt_cfg = charger_config(8)
-    vt_liste = list(vt_cfg.get("items", []))
-    vt_new = st.text_input("Ce qui me passe par la tête", key="t8_vt_txt", placeholder="Ex : rappeler la pharmacie")
-    if st.button("➕ Poser dans le vide-tête", key="t8_vt_add"):
-        if vt_new.strip():
-            vt_liste.append(vt_new.strip())
-            if sauver_config(8, {"items": vt_liste}):
+    st.caption("Note vite ce qui tourne dans ta tête. Tu le traiteras plus tard, tu n'as pas à le garder en mémoire.")
+    vt = list(charger_config(8).get("items", []))
+    nouveau = st.text_input("Ce qui me passe par la tête", key="n_vt_txt", placeholder="Ex : rappeler la pharmacie")
+    if st.button("➕ Poser dans le vide-tête", key="n_vt_add"):
+        if nouveau.strip():
+            vt.append(nouveau.strip())
+            if sauver_config(8, {"items": vt}):
                 redemarrer()
-    if vt_liste:
-        a_retirer = []
-        for i_v, it in enumerate(vt_liste):
-            if st.checkbox(it, key="t8_vt_" + str(i_v) + "_" + str(len(vt_liste))):
-                a_retirer.append(i_v)
-        if a_retirer and st.button("✅ Retirer ce qui est coché (fait ou plus utile)", key="t8_vt_del"):
-            reste = [x for j, x in enumerate(vt_liste) if j not in a_retirer]
-            if sauver_config(8, {"items": reste}):
+    if vt:
+        retirer = [i for i, it in enumerate(vt) if st.checkbox(it, key="n_vt_" + str(i) + "_" + str(len(vt)))]
+        if retirer and st.button("✅ Retirer ce qui est coché (fait ou plus utile)", key="n_vt_del"):
+            if sauver_config(8, {"items": [x for j, x in enumerate(vt) if j not in retirer]}):
                 redemarrer()
     else:
         st.caption("Rien dans le vide-tête. 🌿")
 
-    st.write("---")
 
-    # ---------- 5. CHECK-IN ----------
-    st.write("### 📊 Check-in du jour")
-    st.caption("30 secondes. Sert à repérer ce qui déclenche, ce qui aide, et à en parler à tes médecins avec des faits.")
-    n_date = st.date_input("🗓️ Jour", value=date.today(), max_value=date.today(), key="t8_date")
-    n1, n2 = st.columns(2)
-    with n1:
-        n_surcharge = st.slider("🔊 Surcharge sensorielle", 0, 10, 3, key="t8_surcharge")
-        n_anx = st.slider("⚡ Anxiété / hypervigilance", 0, 10, 3, key="t8_anx")
-    with n2:
-        n_conc = st.slider("🎯 Concentration (10 = facile)", 0, 10, 5, key="t8_conc")
-        n_agit = st.slider("🌀 Agitation / impulsivité", 0, 10, 3, key="t8_agit")
-    n_events = st.multiselect("Ce qui s'est passé", ["Crise / meltdown", "Shutdown (je me suis éteinte)", "Crise de panique", "Flashback", "Cauchemar", "Dissociation (déconnectée)", "Évitement", "Sursauts / hypervigilance", "Hyperfocus (j'ai oublié de manger ou boire)", "Oublis ou retards", "Aucun événement"], key="t8_events")
-    n_decl = st.multiselect("Déclencheurs", ["Bruit", "Lumière", "Foule", "Changement de programme", "Imprévu", "Contact physique", "Odeur / texture", "Contexte médical", "Conflit / échange social", "Manque de sommeil", "Douleur", "Faim", "Je ne sais pas"], key="t8_decl_ms")
-    n_aide = st.text_input("Ce qui m'a aidée", key="t8_aide_txt")
-    n_note = st.text_input("Note libre", key="t8_note")
-    if st.button("💾 Enregistrer mon check-in", key="t8_save_checkin"):
-        ok_n = save_row_to_supabase("suivi_neuro", {
-            "Date": str(n_date), "Surcharge sensorielle (0-10)": int(n_surcharge), "Anxiété / hypervigilance (0-10)": int(n_anx),
-            "Concentration (0-10)": int(n_conc), "Agitation / impulsivité (0-10)": int(n_agit),
-            "Événements": ", ".join(n_events) if n_events else "Aucun", "Déclencheurs": ", ".join(n_decl) if n_decl else "",
-            "Ce qui a aidé": n_aide, "Note": n_note})
-        if ok_n:
-            st.success("🎉 Check-in enregistré !")
-            redemarrer()
+def afficher_trouble(code):
+    conf = _TROUBLES[code]
+    st.subheader(conf["titre"])
+    st.caption("Des repères pratiques, pas un diagnostic ni un traitement : ils ne remplacent pas ton équipe de soin." + (" En détresse ou en danger : 3114 (prévention du suicide, 24h/24) ou 15 / 112." if code == "SPT" else ""))
+    plan = charger_config(conf["cfg"])
+    st.write("### 🆘 Là, maintenant")
+    if plan.get("aide", "").strip():
+        st.success("💛 **Ce qui m'aide (mon plan) :** " + " / ".join(x.strip() for x in plan["aide"].splitlines() if x.strip()))
+    if plan.get("phrase", "").strip():
+        st.info("🗨️ **Ma phrase :** " + plan["phrase"].strip())
+    if code == "TSA":
+        sit = st.radio("Ce que je vis :", ["🔊 Surcharge / meltdown", "🌫️ Shutdown (je m'éteins)"], horizontal=True, key="n_TSA_sit")
+        if sit.startswith("🔊"):
+            st.markdown("""
+1. **Réduire l'entrée :** m'éloigner du bruit, de la lumière, des gens. Baisser la luminosité, mettre casque ou bouchons.
+2. **Ne rien demander de plus :** pas de décision, pas de conversation. Utiliser une phrase toute prête ou un message.
+3. **Mon corps d'abord :** stimming autorisé, couverture lestée ou pression douce, position confortable.
+4. **Attendre sans me juger :** ça passe. Un peu d'eau, grignoter si possible.
+5. **Après :** noter ce qui l'a déclenchée dans le check-in, sans me blâmer, et me reposer plus que d'habitude.
+""")
         else:
-            st.warning("Si l'erreur parle d'une table introuvable, il faut créer la table « suivi_neuro » dans Supabase (script SQL fourni à côté de l'appli).")
-
-    if not neuro_df.empty and "Date" in neuro_df.columns:
-        nd = neuro_df.sort_values(by="Date", ascending=False)
-        st.write("**Mes derniers check-ins :**")
-        st.dataframe(nd.head(14).drop(columns=[c for c in ["created_at", "id"] if c in nd.columns]), use_container_width=True)
-        cols_score = [c for c in ["Surcharge sensorielle (0-10)", "Anxiété / hypervigilance (0-10)", "Concentration (0-10)", "Agitation / impulsivité (0-10)"] if c in nd.columns]
-        if len(nd) >= 2 and cols_score:
-            gr = nd.head(30).sort_values(by="Date").set_index("Date")[cols_score].apply(pd.to_numeric, errors="coerce")
-            st.line_chart(gr)
-        decl_compte = {}
-        for ligne in nd.head(30).get("Déclencheurs", pd.Series(dtype=str)).fillna("").tolist():
-            for d_item in [x.strip() for x in str(ligne).split(",") if x.strip()]:
-                decl_compte[d_item] = decl_compte.get(d_item, 0) + 1
-        if decl_compte:
-            top = sorted(decl_compte.items(), key=lambda kv: kv[1], reverse=True)[:3]
-            st.info("🔎 Déclencheurs les plus fréquents (30 derniers check-ins) : " + ", ".join(k + " (" + str(v) + ")" for k, v in top))
+            st.markdown("""
+1. **Accepter l'arrêt :** mon cerveau se protège, ce n'est pas de la mauvaise volonté.
+2. **Zéro exigence :** annuler ou reporter ce qui peut l'être, prévenir une personne de confiance par message.
+3. **Un environnement calme :** pénombre, silence, couverture, objet réconfortant.
+4. **Petits besoins de base :** eau, nourriture facile, toilettes. Rien d'autre.
+5. **Reprendre très doucement :** un seul geste simple à la fois, sans me juger.
+""")
+        _bloc_phrases(["Je suis en surcharge. J'ai besoin de silence et de calme pendant un moment.", "Je ne peux pas parler maintenant. Je te réponds par message plus tard.",
+                       "Peux-tu me l'écrire ou me le répéter plus lentement, une chose à la fois ?", "Prévenez-moi avant de me toucher et expliquez-moi ce que vous allez faire.",
+                       "J'ai besoin d'une pause. On peut reprendre dans 10 minutes ?"])
+    elif code == "TDAH":
+        st.markdown("""
+1. **Une seule petite action :** la plus petite possible (ouvrir le document, poser le linge sur le lit, remplir un verre d'eau).
+2. **Règle des 2 minutes :** je commence juste 2 minutes. Si je veux m'arrêter après, c'est permis.
+3. **Minuteur :** 5 à 10 minutes, puis pause (minuteur ci-dessous).
+4. **Sortir de ma tête :** tout ce qui tourne va dans le vide-tête plus bas. Je n'ai pas à tout retenir.
+5. **Récompense simple :** après la tâche, quelque chose de petit et agréable.
+""")
+        _bloc_minuteur("tdah")
+        _bloc_phrases(["Je n'arrive pas à démarrer. Peux-tu rester avec moi pendant les 10 premières minutes ?", "Peux-tu me donner une seule consigne à la fois ?",
+                       "J'ai besoin que tu me l'écrives pour que je ne l'oublie pas.", "Je me suis dispersée, je reprends tranquillement là où j'en étais."])
     else:
-        st.caption("Aucun check-in enregistré pour le moment.")
+        st.markdown("""
+1. **Me dire la vérité du moment :** « Je suis en sécurité maintenant. Nous sommes le **""" + date.today().strftime("%d/%m/%Y") + """**. Ce que je ressens est un souvenir, ça va passer. »
+2. **Respirer plus lentement :** inspirer 4 secondes, expirer 6 secondes (outil ci-dessous), 5 à 10 fois.
+3. **Ancrage 5-4-3-2-1 :** nommer **5** choses que je vois, **4** que je peux toucher, **3** que j'entends, **2** que je sens, **1** que je goûte.
+4. **Remettre du présent :** sentir mes pieds sur le sol, le dos contre le dossier, regarder les murs et les coins de la pièce.
+5. **Appeler quelqu'un de confiance** si ça ne descend pas. Si je pense à me faire du mal : 3114 ou 15 / 112.
+""")
+        if plan.get("lieu_sur", "").strip():
+            st.info("🏡 **Mon lieu sûr :** " + plan["lieu_sur"].strip())
+        _bloc_respiration("spt")
+        _bloc_phrases(["Je suis en sécurité maintenant. Ce que je ressens est un souvenir.", "J'ai besoin que tu m'expliques ce que tu vas faire avant de le faire.",
+                       "Stop. J'ai besoin d'une pause.", "Ce n'est pas contre toi. Mon corps est en alerte, j'ai besoin d'un peu de temps."])
+    st.write("---")
+    _bloc_plan(code, plan)
+    st.write("---")
+    if code == "TSA":
+        _bloc_routine()
+        st.write("---")
+    if code == "TDAH":
+        _bloc_videtete()
+        st.write("---")
+        _bloc_routine()
+        st.write("---")
+    _bloc_checkin(code)
+
+
+if choix_menu == _NOMS_MENU[5]:
+    afficher_trouble("TSA")
+if choix_menu == _NOMS_MENU[6]:
+    afficher_trouble("TDAH")
+if choix_menu == _NOMS_MENU[7]:
+    afficher_trouble("SPT")
 
 # --- TAB 7 : FICHE POUR MES MÉDECINS ---
-if choix_menu == _NOMS_MENU[6]:
+if choix_menu == _NOMS_MENU[8]:
     st.subheader("📄 Fiche pour mes médecins")
     st.caption("Un résumé à montrer ou à imprimer avant un rendez-vous. Remplis une fois les 4 champs, le reste se met à jour tout seul.")
     cfg_f = charger_config(4)
@@ -2293,8 +2420,9 @@ if choix_menu == _NOMS_MENU[6]:
     lig_t = []
     for nom_m, info_m3 in meds.items():
         moments_m = [lib for lib, cle, defaut in MOMENTS_PRISE if info_m3.get(cle, defaut)]
-        lig_t.append(nom_m + " : " + " / ".join(moments_m) + ", " + str(dose_actuelle_med(info_m3)) + " cachet(s) par prise (" + str(info_m3.get("timing", "")) + ")")
-    fiche.append(("💊 Traitements actuels", lig_t or ["Aucun traitement enregistré"]))
+        hp_f = str(info_m3.get("heure_precise", "") or "")
+        lig_t.append(nom_m + " : " + "/".join(moments_m) + (" (à " + hp_f + ")" if hp_f else "") + ", " + str(dose_actuelle_med(info_m3)) + " cp")
+    fiche.append(("💊 Traitements", lig_t or ["Aucun traitement enregistré"]))
 
     lig_g = []
     if not glyc_df_local.empty and all(c in glyc_df_local.columns for c in ["Glycémie à jeun", "Glycémie Post-Prandiale"]):
@@ -2302,16 +2430,24 @@ if choix_menu == _NOMS_MENU[6]:
         gg["jeun"] = pd.to_numeric(gg["Glycémie à jeun"].astype(str).str.replace(" g/L", "", regex=False), errors="coerce")
         gg["post"] = pd.to_numeric(gg["Glycémie Post-Prandiale"].astype(str).str.replace(" g/L", "", regex=False), errors="coerce")
         gg = gg[gg["Date"] >= str(date.today() - timedelta(days=14))]
-        for lib_g, col_g in [("À jeun", "jeun"), ("Après repas", "post")]:
+        morceaux_g = []
+        for lib_g, col_g in [("à jeun", "jeun"), ("après repas", "post")]:
             v_g = gg[col_g].dropna()
             if len(v_g) > 0:
-                lig_g.append(lib_g + " (14 derniers jours) : " + str(len(v_g)) + " mesure(s), moyenne " + str(round(float(v_g.mean()), 2)) + " g/L, de " + str(round(float(v_g.min()), 2)) + " à " + str(round(float(v_g.max()), 2)) + " g/L")
+                morceaux_g.append(lib_g + " " + str(round(float(v_g.mean()), 2)) + " (" + str(len(v_g)) + " mesures)")
+        if morceaux_g:
+            lig_g.append("Glycémie moyenne sur 14 jours : " + ", ".join(morceaux_g) + " g/L")
     if not bilans_df.empty and "Examen" in bilans_df.columns:
+        derniers = []
         for ex_b in sorted(set(bilans_df["Examen"].astype(str).tolist())):
             sel_f = bilans_df[bilans_df["Examen"].astype(str) == ex_b].sort_values(by="Date")
             dern = sel_f.iloc[-1]
-            lig_g.append("Dernier résultat " + ex_b + " : " + str(dern.get("Valeur", "")) + " " + ("" if pd.isna(dern.get("Unité", "")) else str(dern.get("Unité", ""))) + " (" + str(dern["Date"]) + ")")
-    fiche.append(("🩸 Glycémie et prises de sang", lig_g or ["Pas de donnée récente"]))
+            u_b = "" if pd.isna(dern.get("Unité", "")) else str(dern.get("Unité", ""))
+            derniers.append((str(dern["Date"]), ex_b + " " + str(dern.get("Valeur", "")) + (" " + u_b if u_b else "")))
+        derniers = sorted(derniers, reverse=True)[:8]
+        if derniers:
+            lig_g.append("Dernières prises de sang : " + " ; ".join(x[1] + " (" + x[0][8:10] + "/" + x[0][5:7] + ")" for x in derniers))
+    fiche.append(("🩸 Glycémie et bilans", lig_g or ["Pas de donnée récente"]))
 
     lig_p = []
     if not poids_df_local.empty:
@@ -2320,12 +2456,15 @@ if choix_menu == _NOMS_MENU[6]:
         pp = pp.dropna(subset=["Poids (kg)"]).sort_values(by="Date")
         if not pp.empty:
             actuel_f = float(pp["Poids (kg)"].iloc[-1])
-            depart_f = float(pp["Poids (kg)"].iloc[0])
-            lig_p.append("Poids actuel : " + str(round(actuel_f, 1)) + " kg (pesée du " + str(pp["Date"].iloc[-1]) + "), poids de départ : " + str(round(depart_f, 1)) + " kg")
+            recents = pp[pp["Date"] >= str(date.today() - timedelta(days=28))]["Poids (kg)"]
+            txt_p = "Poids : " + str(round(actuel_f, 1)) + " kg (pesée du " + str(pp["Date"].iloc[-1])[8:10] + "/" + str(pp["Date"].iloc[-1])[5:7] + ")"
+            if len(recents) >= 2:
+                txt_p += ", moyenne 4 semaines " + str(round(float(recents.mean()), 1)) + " kg"
             ancien_f = pp[pp["Date"] <= str(date.today() - timedelta(days=28))]
             if not ancien_f.empty:
                 var_f = actuel_f - float(ancien_f["Poids (kg)"].iloc[-1])
-                lig_p.append("Variation depuis environ 4 semaines : " + ("+" if var_f >= 0 else "") + str(round(var_f, 1)) + " kg")
+                txt_p += ", variation 4 semaines " + ("+" if var_f >= 0 else "") + str(round(var_f, 1)) + " kg"
+            lig_p.append(txt_p)
     fiche.append(("⚖️ Poids", lig_p or ["Pas de pesée enregistrée"]))
 
     lig_c = []
@@ -2333,76 +2472,69 @@ if choix_menu == _NOMS_MENU[6]:
     if not cycle_df.empty and "Cycle Status" in cycle_df.columns:
         regles_f = sorted(set(cycle_df[cycle_df["Cycle Status"] == "🩸 Début des Règles"]["Date"].tolist()))
     if regles_f:
-        lig_c.append("Dernières règles : " + datetime.strptime(regles_f[-1], "%Y-%m-%d").strftime("%d/%m/%Y"))
+        txt_c = "Dernières règles : " + datetime.strptime(regles_f[-1], "%Y-%m-%d").strftime("%d/%m/%Y")
         durees_f = []
         for a_f, b_f in zip(regles_f[:-1], regles_f[1:]):
             dif_f = (datetime.strptime(b_f, "%Y-%m-%d").date() - datetime.strptime(a_f, "%Y-%m-%d").date()).days
             if 15 <= dif_f <= 90:
                 durees_f.append(dif_f)
         if durees_f:
-            lig_c.append("Durée moyenne des cycles : " + str(int(round(sum(durees_f) / len(durees_f)))) + " jours (sur " + str(len(durees_f)) + " cycle(s))")
-    if not tests_df.empty and "Résultat" in tests_df.columns:
-        pics_f = tests_df[tests_df["Résultat"].astype(str).str.startswith("🥚 Pic")]
-        txt_pic = ""
-        if not pics_f.empty:
-            txt_pic = ", dernier pic le " + str(pics_f["Date"].max())
-        lig_c.append("Tests d'ovulation : " + str(len(tests_df)) + " enregistré(s), " + str(len(pics_f)) + " pic(s)" + txt_pic)
-    fiche.append(("🌸 Cycle et ovulation", lig_c or ["Pas de donnée de cycle"]))
+            txt_c += ", cycle moyen " + str(int(round(sum(durees_f) / len(durees_f)))) + " jours"
+        lig_c.append(txt_c)
+    fiche.append(("🌸 Cycle", lig_c or ["Pas de donnée de cycle"]))
 
     lig_d = []
     if not douleur_df.empty:
-        dd7 = douleur_df.copy()
-        dd7 = dd7[dd7["Date"] >= str(date.today() - timedelta(days=14))]
-        for lib_d, col_d in [("Douleur", "Douleur (0-10)"), ("Fatigue", "Fatigue (0-10)"), ("Sommeil (h)", "Sommeil (h)")]:
+        dd7 = douleur_df[douleur_df["Date"] >= str(date.today() - timedelta(days=14))]
+        morceaux_d = []
+        for lib_d, col_d in [("douleur", "Douleur (0-10)"), ("fatigue", "Fatigue (0-10)"), ("sommeil h", "Sommeil (h)")]:
             if col_d in dd7.columns:
                 v_d = pd.to_numeric(dd7[col_d], errors="coerce").dropna()
                 if len(v_d) > 0:
-                    lig_d.append(lib_d + " (moyenne sur 14 jours) : " + str(round(float(v_d.mean()), 1)) + " sur " + str(len(v_d)) + " jour(s) noté(s)")
+                    morceaux_d.append(lib_d + " " + str(round(float(v_d.mean()), 1)))
+        if morceaux_d:
+            lig_d.append("Moyenne 14 jours : " + ", ".join(morceaux_d))
     fiche.append(("🧘 Douleur, fatigue, sommeil", lig_d or ["Pas de donnée récente"]))
 
-    lig_n = []
-    plan_f = charger_config(6)
-    for lib_n, cle_n in [("Mes signes d'alerte", "signes"), ("Mes déclencheurs", "declencheurs"), ("Ce qui m'aide", "aide"), ("Ce qui m'aggrave", "eviter"), ("Ce que mes soignants peuvent faire", "soignants"), ("Qui appeler", "contact")]:
-        if str(plan_f.get(cle_n, "")).strip():
-            lig_n.append(lib_n + " : " + _une_ligne(plan_f[cle_n]))
-    if not neuro_df.empty and "Date" in neuro_df.columns:
-        nf = neuro_df.sort_values(by="Date", ascending=False).head(30)
-        for c_n in ["Surcharge sensorielle (0-10)", "Anxiété / hypervigilance (0-10)", "Concentration (0-10)", "Agitation / impulsivité (0-10)"]:
-            if c_n in nf.columns:
-                moy_n = pd.to_numeric(nf[c_n], errors="coerce").mean()
-                if pd.notna(moy_n):
-                    lig_n.append(c_n.replace(" (0-10)", "") + " : moyenne " + str(round(float(moy_n), 1)) + "/10 sur " + str(len(nf)) + " check-in(s)")
-        ev_compte = {}
-        for ligne_e in nf.get("Événements", pd.Series(dtype=str)).fillna("").tolist():
-            for e_item in [x.strip() for x in str(ligne_e).split(",") if x.strip() and x.strip() != "Aucun"]:
-                ev_compte[e_item] = ev_compte.get(e_item, 0) + 1
-        if ev_compte:
-            lig_n.append("Événements notés : " + ", ".join(k + " (" + str(v) + ")" for k, v in sorted(ev_compte.items(), key=lambda kv: kv[1], reverse=True)))
-    if lig_n:
-        fiche.append(("🧠 TDAH, TSA, stress post-traumatique", lig_n))
+    for code_f, titre_f2 in [("TSA", "🧩 TSA"), ("TDAH", "⚡ TDAH"), ("SPT", "🌿 SPT")]:
+        conf_f = _TROUBLES[code_f]
+        plan_f = charger_config(conf_f["cfg"])
+        lig_n = []
+        for lib_n, cle_n in [("Déclencheurs", "declencheurs"), ("Ce qui m'aide", "aide"), ("Pour les soignants", "soignants")]:
+            if str(plan_f.get(cle_n, "")).strip():
+                lig_n.append(lib_n + " : " + _une_ligne(plan_f[cle_n]))
+        if not neuro_df.empty and conf_f["score_col"] in neuro_df.columns:
+            nf = neuro_df[pd.to_numeric(neuro_df[conf_f["score_col"]], errors="coerce").notna()].sort_values(by="Date", ascending=False).head(30)
+            if not nf.empty:
+                moy_txt = ", ".join(c_n.replace(" (0-10)", "") + " " + str(round(float(pd.to_numeric(nf[c_n], errors="coerce").mean()), 1)) + "/10" for _, c_n, _ in conf_f["scores"])
+                lig_n.append("Moyenne (" + str(len(nf)) + " check-ins) : " + moy_txt)
+        if lig_n:
+            fiche.append((titre_f2, lig_n))
 
     lig_r = []
     if not rdv_df.empty and "Date" in rdv_df.columns:
         for _, r_f in rdv_df.sort_values(by="Date").iterrows():
             if str(r_f["Date"]) >= str(date.today()) and str(r_f.get("Statut", "")) != "✅ Effectué":
-                lig_r.append("Rendez-vous le " + str(r_f["Date"]) + " : " + str(r_f.get("Médecin / Spécialité", "")))
+                lig_r.append(str(r_f["Date"])[8:10] + "/" + str(r_f["Date"])[5:7] + " : " + str(r_f.get("Médecin / Spécialité", "")))
+    lig_r = lig_r[:5]
     if not rdv_prendre_df.empty and "Statut" in rdv_prendre_df.columns:
-        for _, r_p in rdv_prendre_df[rdv_prendre_df["Statut"] != "Fait"].iterrows():
-            lig_r.append("À prendre : " + str(r_p.get("Spécialité", "")) + " (" + str(r_p.get("Statut", "")) + ")")
+        a_prendre = [str(r_p.get("Spécialité", "")) for _, r_p in rdv_prendre_df[rdv_prendre_df["Statut"] != "Fait"].iterrows()]
+        if a_prendre:
+            lig_r.append("À prendre : " + ", ".join(a_prendre[:6]))
     fiche.append(("📅 Rendez-vous", lig_r or ["Aucun rendez-vous à venir"]))
 
     lig_pma = []
     if not examens_df.empty and "Examen" in examens_df.columns:
-        for _, r_e in examens_df.sort_values(by="Date").iterrows():
+        for _, r_e in examens_df.sort_values(by="Date", ascending=False).head(4).iterrows():
             lig_pma.append(str(r_e["Date"]) + " : " + str(r_e["Examen"]) + " (" + str(r_e.get("Statut", "")) + ")")
     if lig_pma:
-        fiche.append(("🧬 Examens PMA", lig_pma))
+        fiche.append(("🧬 Examens PMA (4 derniers)", lig_pma))
 
     lig_q = []
     if not questions_df.empty and "Question" in questions_df.columns and "Posée" in questions_df.columns:
-        for _, r_q in questions_df[questions_df["Posée"].astype(str) != "Oui"].iterrows():
-            lig_q.append(str(r_q["Question"]) + " (" + str(r_q.get("Pour", "")) + ")")
-    fiche.append(("❓ Mes questions à poser", lig_q or ["Aucune question en attente"]))
+        for _, r_q in questions_df[questions_df["Posée"].astype(str) != "Oui"].head(5).iterrows():
+            lig_q.append(str(r_q["Question"]))
+    fiche.append(("❓ Questions à poser", lig_q or ["Aucune question en attente"]))
 
     st.write("---")
     st.write("### 📋 Mon résumé")
@@ -2430,4 +2562,3 @@ if choix_menu == _NOMS_MENU[6]:
     with dl2:
         st.markdown(lien_telechargement(corps_txt, "fiche_medecins_" + str(date.today()) + ".txt", "text/plain", "⬇️ Version texte"), unsafe_allow_html=True)
     st.caption("Ces informations viennent de ce que tu as noté dans l'appli. Elles ne remplacent pas un dossier médical.")
-    
